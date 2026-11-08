@@ -15,20 +15,30 @@ ROLES = {
 ROLE_GUIDANCE = {
     "technical": "Combine trend, MACD, RSI/KDJ, volume and support/resistance; no single oscillator establishes a trade. RSI 70/30 marks overbought/oversold and 80/20 extremes; KDJ J above 100/below 0 is an extreme, not an automatic order. MACD/KDJ crosses require trend and volume confirmation. A Bollinger-band breach alone proves neither continuation nor reversal; compare price/volume expansion or contraction. Compare moves with the supplied ATR-adaptive threshold, not a fixed percent alone. Use supplied relative strength for allocation context; distinguish a rebound from a trend reversal.",
     "flow": "Check daily versus multi-day flow, price/flow divergence and the supplied market-relative strength. Missing components are unknown, not zero.",
-    "events": "Read supplied fulltext excerpts before interpreting an announcement. Separate first publication, old news and genuinely new developments; use timestamps and sources. A previous deep-research view is a dated prior to reassess, not an instruction or a current fact.",
+    "events": "Read supplied fulltext excerpts before interpreting an announcement. Separate first publication, old news and genuinely new developments; use timestamps and sources. Distinguish a monetary range's minimum commitment from its maximum authorization; calculate remaining capacity against the stated upper bound, never the lower bound. A previous deep-research view is a dated prior to reassess, not an instruction or a current fact.",
     "strategy": "Match the supplied trading horizon: short focuses on intraday momentum/volume, swing on trend and levels, long on structural change. Respect provided stop-loss/take-profit warnings as review triggers rather than automatic trades. Explain whether current evidence supports or overturns any dated deep-research prior. Never infer cash, affordability or account restrictions. Reasons explain market evidence; order restrictions are computed separately after finalization.",
-    "risk": "Evidence tools only reread captured documents; they cannot fetch a missing announcement or new market data. Use evidence_needed only for a concrete captured source not yet examined. For a known absent fact, request revise to remove unsupported causal certainty, qualify attribution, reduce confidence or require review; reject if no defensible bounded plan remains. Do not request the same unavailable fact again after feedback. A future trigger or invalidation is a conditional observation to monitor, not a current fact that must already be proved. Media-reported earnings expectations remain attributed reports unless primary figures were captured; a cautious watch/avoid plan may use independently supported price/flow facts while disclosing that limitation.",
+    "risk": "Check monetary arithmetic and distinguish a range's lower commitment from its upper authorization before accepting remaining-capacity claims. Evidence tools only reread captured documents; they cannot fetch a missing announcement or new market data. Use evidence_needed only for a concrete captured source not yet examined. For a known absent fact, request revise to remove unsupported causal certainty, qualify attribution, reduce confidence or require review; reject if no defensible bounded plan remains. Do not request the same unavailable fact again after feedback. A future trigger or invalidation is a conditional observation to monitor, not a current fact that must already be proved. Media-reported earnings expectations remain attributed reports unless primary figures were captured; a cautious watch/avoid plan may use independently supported price/flow facts while disclosing that limitation.",
 }
 
 SESSION_GUIDANCE = {
-    "premarket": "Plan today's opening scenarios, overnight market transmission, catalysts, support/resistance and conditional responses. Do not assume today's opening/closing prices are already known. Analyze the scoped stocks independently of whether a postmarket report exists. In session_notes, give EVERY stock a brief focus and two concrete conditional responses (upside and downside); do not invent an opening gap percentage.",
-    "postmarket": "Review the supplied session's market context, each stock's technical/flow/event evidence, portfolio differences and next-session focus. Distinguish observed closing facts from intraday snapshots and avoid calling an unfinished session a closing fact. In session_notes, attribute each stock's observed move to supported drivers, distinguish correlation from causality, and evaluate the supplied prior_plan as confirmed/refuted/mixed/unresolved. If no prior_plan is supplied, use no_prior; never invent a morning forecast or call pending triggers a win.",
+    "premarket": "Plan today's opening scenarios, overnight market transmission, catalysts, support/resistance and conditional responses. Do not assume today's opening/closing prices are already known. Analyze the scoped stocks independently of whether a postmarket report exists. Do not invent an opening gap percentage.",
+    "postmarket": "Review the supplied session's market context, each stock's technical/flow/event evidence, portfolio differences and next-session focus. Distinguish observed closing facts from intraday snapshots and avoid calling an unfinished session a closing fact. Distinguish correlation from causality; never invent a morning forecast or call pending triggers a win.",
     "intraday": "Focus on what changed at the captured time, whether the move exceeds normal ATR volatility, immediate levels and when the view fails. Future closing confirmation belongs to a plan condition. Avoid repeating unchanged background or manufacturing an alert from missing evidence.",
+}
+
+
+SESSION_NOTES_GUIDANCE = {
+    "premarket": "In session_notes, give EVERY stock a brief focus and two concrete conditional responses (upside and downside).",
+    "postmarket": "In session_notes, attribute each stock's observed move to supported drivers and evaluate the supplied prior_plan as confirmed/refuted/mixed/unresolved. If no prior_plan is supplied, use no_prior.",
 }
 
 
 def instructions(role, profile, fast=False):
     value = ROLE_GUIDANCE.get(role, "") + " " + SESSION_GUIDANCE[profile]
+    if role == "strategy" and profile in SESSION_NOTES_GUIDANCE:
+        value += " " + SESSION_NOTES_GUIDANCE[profile]
+    else:
+        value += " Do not output session_notes; this role/session does not author that field."
     if role in {"technical", "flow", "events"}:
         value += " Other domains are withheld from your scoped role; do not describe them as missing solely because you cannot see them. Set debate_requested only for a material catalyst or evidence conflict needing opposing views; ordinary missing fields alone are not enough."
     if fast and role == "strategy":

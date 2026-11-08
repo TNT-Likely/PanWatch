@@ -93,7 +93,7 @@ export interface DeepAnalysisResult {
 
 export interface ProgressStage {
   name: string
-  status: 'pending' | 'running' | 'done'
+  status: 'pending' | 'running' | 'done' | 'failed' | 'review'
   started_at?: string
   duration_sec?: number
   cost_usd?: number

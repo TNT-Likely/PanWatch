@@ -1,5 +1,6 @@
 """Request-scoped model metadata and attempt accounting over the existing candidate route."""
 import asyncio
+import logging
 import re
 
 from openai import BadRequestError
@@ -7,11 +8,15 @@ from openai import BadRequestError
 from pan_investment_research import ModelReply
 
 from src.platform.ai.ai_failover import _mark_fail, _mark_ok, classify_ai_error, ERR_FATAL
+from .context_limits import estimate_input_tokens, minimum_output_tokens, parse_context_limit
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchModelGateway:
     def __init__(self, client):
         self.client = client
+        self.context_limits = {}
 
     @staticmethod
     def _extras(model, tools):
@@ -69,27 +74,60 @@ class ResearchModelGateway:
                 options["timeout"] = remaining
             return await client.client.with_options(**options).chat.completions.create(**kwargs)
 
+        required_output = minimum_output_tokens(schema)
+        context_errors = []
         for client, label in candidates:
+            identity = (getattr(client, "base_url", ""), client.model)
             kwargs = {"model": client.model, "messages": messages}
             if max_output_tokens is not None:
                 kwargs["max_tokens"] = max_output_tokens
             if tools:
                 kwargs["tools"] = tools
             kwargs.update(self._extras(client.model, tools))
-            while True:
+            known_limit = self.context_limits.get(identity)
+            if known_limit:
+                estimated = estimate_input_tokens(messages, tools)
+                available = known_limit.available_output(estimated)
+                if available < required_output:
+                    context_errors.append(f"{label}: estimated input {estimated}, window {known_limit.window}")
+                    logger.warning("Research context skip: role=%s candidate=%s estimated_input=%s window=%s required_output=%s",
+                                   role, label, estimated, known_limit.window, required_output)
+                    continue
+                kwargs["max_tokens"] = min(max_output_tokens or available, available)
+            context_retried = False
+            for negotiation in range(5):
                 await before_attempt()
                 try:
                     reply = await call(client, kwargs)
                 except Exception as exc:
-                    if isinstance(exc, BadRequestError) and self._adjust_options(kwargs, exc):
+                    limit = parse_context_limit(exc) if isinstance(exc, BadRequestError) else None
+                    if limit:
+                        self.context_limits[identity] = limit
+                        available = limit.available_output(limit.input_tokens) if limit.input_tokens is not None else 0
+                        context_errors.append(f"{label}: input {limit.input_tokens}, window {limit.window}")
+                        token_key = "max_completion_tokens" if "max_completion_tokens" in kwargs else "max_tokens"
+                        feasible = min(kwargs.get(token_key, available), available)
+                        retry = not context_retried and feasible >= required_output and negotiation < 4
+                        logger.warning("Research context limit: role=%s candidate=%s input=%s window=%s output=%s action=%s",
+                                       role, label, limit.input_tokens, limit.window, feasible, "retry" if retry else "switch")
+                        last_error = exc
+                        if retry:
+                            kwargs[token_key] = feasible
+                            context_retried = True
+                            continue
+                        break
+                    if isinstance(exc, BadRequestError) and negotiation < 4 and self._adjust_options(kwargs, exc):
                         continue
                     if classify_ai_error(exc) == ERR_FATAL:
                         raise
                     _mark_fail(label)
                     last_error = exc
+                    logger.warning("Research candidate failed: role=%s candidate=%s error=%s; trying next candidate",
+                                   role, label, type(exc).__name__)
                     break
                 return self._reply(reply, label)
-        raise RuntimeError("All configured research model candidates failed") from last_error
+        detail = "; context capacity: " + "; ".join(context_errors) if context_errors else ""
+        raise RuntimeError("All configured research model candidates failed" + detail) from last_error
 
 
 class EvidenceTools:

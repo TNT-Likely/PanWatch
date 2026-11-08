@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { useTranslation } from 'react-i18next'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { markdownClass, type ProcessItem } from './ResearchReport'
 
 const LAYERS = [['gate'], ['technical', 'flow', 'events'], ['bull', 'bear'], ['manager'], ['strategy'], ['risk'], ['decision'], ['execution']]
@@ -8,7 +9,7 @@ const LAYERS = [['gate'], ['technical', 'flow', 'events'], ['bull', 'bear'], ['m
 export function ResearchProcessGraph({ items }: { items: ProcessItem[] }) {
   const { t } = useTranslation('configuration')
   const marker = useId().replace(/:/g, '')
-  const [selected, setSelected] = useState('manager')
+  const [selected, setSelected] = useState<string | null>(null)
   const groups = useMemo(() => items.reduce<Record<string, ProcessItem[]>>((acc, item) => {
     if (item.role) (acc[item.role] ||= []).push(item)
     return acc
@@ -25,10 +26,9 @@ export function ResearchProcessGraph({ items }: { items: ProcessItem[] }) {
       if (item.role && positions[to]) edges.push({ from: item.role, to, feedback: true })
     }
   }
-  const active = groups[selected]?.length ? selected : (groups.strategy?.length ? 'strategy' : layers[layers.length - 1]?.[0])
   const label = (role: string) => role === 'strategy' && groups.gate?.length ? t('p4.history.intradayDecision') : role === 'risk' && groups[role]?.every(item => item.kind === 'rule') ? t('p4.history.ruleChecks') : t(`p4.history.graphRoles.${role}`, { defaultValue: role })
   const height = layers.length * 92
-  const selectedItems = active ? groups[active] || [] : items
+  const selectedItems = selected ? groups[selected] || [] : []
   return <section className="space-y-3" aria-label={t('p4.history.processTab')}>
     <p className="text-xs leading-5 text-muted-foreground">{t('p4.history.graphHint')}</p>
     {layers.length > 0 && <div className="relative rounded-xl border border-border/60 bg-background/60" style={{ height }} data-testid="research-graph">
@@ -40,18 +40,31 @@ export function ResearchProcessGraph({ items }: { items: ProcessItem[] }) {
           return <path key={index} d={path} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeDasharray={edge.feedback ? '4 4' : undefined} markerEnd={`url(#${marker})`} data-feedback={edge.feedback || undefined} />
         })}
       </svg>
-      {Object.entries(positions).map(([role, p]) => <button key={role} type="button" aria-pressed={active === role} onClick={() => setSelected(role)}
-        className={`absolute flex h-[72px] -translate-x-1/2 flex-col items-center justify-center gap-1 rounded-lg border px-1 text-center text-xs shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${active === role ? 'border-primary bg-accent text-foreground' : 'border-border bg-card text-muted-foreground hover:border-primary/50'}`}
+      {Object.entries(positions).map(([role, p]) => <button key={role} type="button" aria-haspopup="dialog" onClick={() => setSelected(role)}
+        className={`absolute flex h-[72px] -translate-x-1/2 flex-col items-center justify-center gap-1 rounded-lg border px-1 text-center text-xs shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${role === selected ? 'border-primary bg-accent text-foreground' : 'border-border bg-card text-muted-foreground hover:border-primary/50'}`}
         style={{ left: `${p.x / 10}%`, top: p.y - 36, width: p.width }}>
         <span className="font-medium">{label(role)}</span><span className="text-[10px]">{t('p4.history.artifactCount', { count: groups[role]?.length || 0 })}</span>
       </button>)}
     </div>}
     {edges.some(edge => edge.feedback) && <p className="text-xs text-muted-foreground">{t('p4.history.feedbackLegend')}</p>}
-    {active && <h3 className="text-sm font-semibold">{label(active)}</h3>}
-    {selectedItems.map((item, index) => <article key={item.id || index} className="rounded-xl border border-border/60 bg-background/60 p-3">
+    {items.filter(item => !item.role).map((item, index) => <article key={item.id || index} className="rounded-xl border border-border/60 bg-background/60 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>{item.title}</span>{item.kind === 'rule' && <span className="rounded bg-accent px-1.5 py-0.5">{t('p4.history.ruleNode')}</span>}{item.verdict && <span className="rounded bg-accent px-1.5 py-0.5">{t(`p4.history.verdict.${item.verdict}`, { defaultValue: item.verdict })}</span>}{item.active === false && <span>{t('p4.history.previousRound')}</span>}</div>
       <div className={markdownClass}><ReactMarkdown>{item.content}</ReactMarkdown></div>
     </article>)}
+    <Dialog open={!!selected} onOpenChange={open => { if (!open) setSelected(null) }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{selected ? label(selected) : ''}</DialogTitle>
+          <DialogDescription>{t('p4.history.artifactCount', { count: selectedItems.length })}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {selectedItems.map((item, index) => <article key={item.id || index} className="rounded-xl border border-border/60 bg-background/60 p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>{item.title}</span>{item.kind === 'rule' && <span className="rounded bg-accent px-1.5 py-0.5">{t('p4.history.ruleNode')}</span>}{item.verdict && <span className="rounded bg-accent px-1.5 py-0.5">{t(`p4.history.verdict.${item.verdict}`, { defaultValue: item.verdict })}</span>}{item.active === false && <span>{t('p4.history.previousRound')}</span>}</div>
+            <div className={markdownClass}><ReactMarkdown>{item.content}</ReactMarkdown></div>
+          </article>)}
+        </div>
+      </DialogContent>
+    </Dialog>
     {!items.length && <p className="py-6 text-center text-muted-foreground">{t('p4.history.noProcess')}</p>}
   </section>
 }

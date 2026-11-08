@@ -676,7 +676,7 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
         "completed_stages": [...],
         "elapsed_sec": float,
         "total_cost_usd": float,
-        "stages": [{"name": ..., "status": "pending"|"running"|"done"}, ...],
+        "stages": [{"name": ..., "status": "pending"|"running"|"done"|"failed"|"review"}, ...],
         "run": {  # 最终 AgentRun(已完成时)
             "status": ..., "result": ..., "error": ..., "duration_ms": ...
         }
@@ -690,7 +690,10 @@ def get_run_progress(trace_id: str, db: Session = Depends(get_db)):
     research = db.query(ResearchRun).filter(ResearchRun.trace_id == trace_id).order_by(ResearchRun.created_at.desc()).first()
     if research:
         progress = research.progress or {}
-        stages = [{"name": role, "status": "running" if event["status"] in {"running", "tool_started"} else "done"}
+        # A provider/tool reply is not a validated role result. Only explicit
+        # completion events advance the graph; preserve failure/review states.
+        stages = [{"name": role, "status": "done" if event.get("status") in {"done", "skipped"}
+                   else event["status"] if event.get("status") in {"failed", "review"} else "running"}
                   for role, event in progress.items()]
         active = [s["name"] for s in stages if s["status"] == "running"]
         lifecycle = db.query(AgentRun).filter(AgentRun.trace_id == trace_id).order_by(AgentRun.id.desc()).first()

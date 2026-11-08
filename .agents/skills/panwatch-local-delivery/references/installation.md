@@ -13,6 +13,27 @@ python3 scripts/install-agent-skills.py --check
 
 默认检查 Codex、Claude Code、Cursor、Gemini CLI。Codex/Cursor/Gemini 使用已有共享目录；Claude Code 创建 `.claude/skills/panwatch-local-delivery` 的相对 symlink。修改技能源后链接即时指向新内容，避免多份文档漂移。
 
+### Claude Code 文件硬链接
+
+需要真实目录入口、同时复用 `.agents/skills/` 中的文件时，使用逐文件硬链接（目录本身不能硬链接）：
+
+```sh
+python3 scripts/install-agent-skills.py --agent claude --mode hardlink
+python3 scripts/install-agent-skills.py --agent claude --check
+```
+
+生成 `.claude/skills/<name>/SKILL.md` 及同目录相对引用资源；每个文件与共享源具有相同的设备号和 inode，不复制技能正文。已有工具安装的 symlink/copy 入口需先执行 `--agent claude --uninstall`，再安装 `--mode hardlink`；不会自动覆盖已有入口。
+
+只维护 `.agents/skills/` 下的源文件。硬链接两端原地写入会同步改变同一文件；编辑器原子保存、Git checkout 等替换 inode 的操作，以及新增／删除资源后，重新运行 `--mode hardlink` 刷新，再执行 `--check`。检查会核对全部文件的 inode，不仅比较内容；独立替换且被修改的安装文件会阻止刷新或卸载。
+
+可在项目根核验技能入口（Python 标准库，不调用模型）：
+
+```sh
+python3 -c 'from pathlib import Path; s = Path(".agents/skills/panwatch-local-delivery/SKILL.md"); t = Path(".claude/skills/panwatch-local-delivery/SKILL.md"); assert not t.parent.is_symlink() and not t.is_symlink() and s.samefile(t); print("same inode:", s.stat().st_ino, t.stat().st_ino, "links:", s.stat().st_nlink)'
+```
+
+硬链接要求源与入口处于同一文件系统；不支持时明确选择 `--mode link` 或 `--mode copy`，安装器不会静默降级。
+
 按需选择：
 
 ```sh
