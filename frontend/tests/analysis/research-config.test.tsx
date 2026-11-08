@@ -82,17 +82,23 @@ describe('validated research graph configuration', () => {
     expect((screen.getByRole('button', { name: '保存', exact: true }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('labels deterministic nodes separately and selects the fast decision report by default', () => {
+  it('labels deterministic nodes separately and opens each role report in a dialog', () => {
     render(<ResearchProcessGraph items={[
       { role: 'gate', title: 'gate', content: 'New signal', kind: 'rule' },
       { role: 'technical', title: 'technical', content: 'Evidence-backed technicals', kind: 'model' },
       { role: 'strategy', title: 'proposal', content: 'Fast conditional decision', kind: 'model' },
       { role: 'execution', title: 'rules', content: 'Execution guard', kind: 'rule' },
     ]} />)
-    expect(screen.getByText('Fast conditional decision')).toBeTruthy()
+    expect(screen.queryByText('Fast conditional decision')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /盘中决策/ }))
+    expect(within(screen.getByRole('dialog')).getByText('Fast conditional decision')).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByText('Fast conditional decision')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /执行校验/ }))
-    expect(screen.getByText('规则节点 · 未调用模型')).toBeTruthy()
-    expect(screen.getByText('Execution guard')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /研究裁定/ })).toBeNull()
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('规则节点 · 未调用模型')).toBeTruthy()
+    expect(within(dialog).getByText('Execution guard')).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(within(screen.getByTestId('research-graph')).queryByRole('button', { name: /研究裁定/ })).toBeNull()
   })
 })

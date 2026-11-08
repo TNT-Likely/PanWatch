@@ -19,17 +19,20 @@ const report: ResearchReportData = {
 const openTab = (name: string) => fireEvent.mouseDown(screen.getByRole('tab', { name, exact: true }), { button: 0, ctrlKey: false })
 
 describe('reader-facing research report', () => {
-  it('keeps the main report and lets readers select a role without opening every artifact', () => {
+  it('keeps the main report and opens role reports in a dialog on node click', () => {
     render(<ResearchReport content="old content" report={report} />)
     expect(screen.getByRole('heading', { name: '大盘概览' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: '明日关注' })).toBeTruthy()
     expect(screen.queryByText('old content')).toBeNull()
     const graph = screen.getByTestId('research-graph')
     expect(within(graph).getAllByRole('button')).toHaveLength(9)
-    expect(screen.getByText('manager 完整内部分析')).toBeTruthy()
-    fireEvent.click(within(graph).getByRole('button', { name: /技术分析/ }))
-    expect(screen.getByText('technical 完整内部分析')).toBeTruthy()
     expect(screen.queryByText('manager 完整内部分析')).toBeNull()
+    fireEvent.click(within(graph).getByRole('button', { name: /技术分析/ }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('technical 完整内部分析')).toBeTruthy()
+    expect(within(dialog).queryByText('manager 完整内部分析')).toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByText('technical 完整内部分析')).toBeNull()
   })
 
   it('omits absent roles and identifies a revision as a request rather than executed feedback', () => {
@@ -41,8 +44,11 @@ describe('reader-facing research report', () => {
     expect(container.querySelector('path[data-feedback]')).toBeTruthy()
     expect(screen.getByText('虚线表示补证或修订要求，不代表反馈一定已执行。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /风险审查/ }))
-    expect(screen.getAllByText('risk 完整内部分析')).toHaveLength(2)
-    expect(screen.getByText('历史轮次')).toBeTruthy()
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getAllByText('risk 完整内部分析')).toHaveLength(2)
+    expect(within(dialog).getByText('历史轮次')).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('previews every source, expands all details and filters market-qualified stock keys and domains', () => {
