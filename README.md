@@ -37,6 +37,12 @@
 <details open>
 <summary>❤️ Sponsors</summary>
 
+<a href="https://modelflare.dev/sign-up?utm_source=github&utm_campaign=panwatch"><img src="./docs/sponsors/modelflare_banner_en.png" alt="Modelflare" width="720"></a>
+
+Thanks to **Modelflare** for sponsoring this project! Operated by Havenbyte LLC in the US, Modelflare delivers full-capability, stable models at low cost, with access to GPT, Claude, Gemini, Grok, and 40+ image/video models. The designated OpenAI group comes with a **65% / 75% / 85% daily cache-hit-rate guarantee**; a single top-up of **US$20 unlocks GPT at 0.015x**, and **US$50 unlocks Claude at 0.03x**. [**Sign up via the dedicated link**](https://modelflare.dev/sign-up?utm_source=github&utm_campaign=panwatch)
+
+---
+
 | Logo | Introduction |
 | --- | --- |
 | <a href="https://88api.ai/sign-up?aff=W38W"><img src="./docs/sponsors/88api-logo.png" alt="88API" width="120"></a> | [**88API Token Aggregation Platform**](https://88api.ai/sign-up?aff=W38W)<br><br>🧠 Access language and coding models including GPT, Claude, Gemini, Grok, DeepSeek, Kimi, and GLM;<br>🎨 Image models: GPT-Image, Gemini, Grok, and more;<br>🎬 Video models: Seedance, Veo, MiniMax H3, Kling, Grok, and more;<br>🎙️ Speech capabilities: Whisper, TTS, and more. From copywriting and image generation and editing to video generation and voiceovers.<br>🎁 New users receive trial credits upon registration to test model capabilities. Live customer support is available on the site!<br>👉 Operated by a registered Hong Kong company · Stable availability · Fully operational, full-capability service · No reduced model intelligence · Invoices available<br><br>[**Register now →**](https://88api.ai/sign-up?aff=W38W) |
