@@ -1262,17 +1262,23 @@ def refresh_strategy_signals(
                     StrategySignalRun.stock_market.in_(markets) if markets is not None else True)
             .all()
         )
-        existing: dict[tuple[int, str], StrategySignalRun] = {}
+        # Match existing runs by business key (symbol, market, strategy),
+        # not by source_candidate_id: candidates are rebuilt per snapshot
+        # and their surrogate ids are recycled onto different stocks, while
+        # a reused run row keeps the stock_symbol/stock_name it was created
+        # with — keying on the candidate id writes one stock's prices into
+        # another stock's row (issue #94).
+        existing: dict[tuple[str, str, str], StrategySignalRun] = {}
         for row in existing_rows:
-            cand_id = row.source_candidate_id
-            code = row.strategy_code
-            if cand_id is None:
+            symbol = (row.stock_symbol or "").strip().upper()
+            if not symbol:
                 continue
-            existing[(int(cand_id), str(code or ""))] = row
+            market_key = (row.stock_market or "").strip().upper()
+            existing[(symbol, market_key, str(row.strategy_code or ""))] = row
 
         weight_cache: dict[str, dict[str, float]] = {}
         factor_weight_cache: dict[str, dict[str, float]] = {}
-        touched_keys: set[tuple[int, str]] = set()
+        touched_keys: set[tuple[str, str, str]] = set()
         touched_rows: list[StrategySignalRun] = []
 
         for c in candidates:
@@ -1347,7 +1353,7 @@ def refresh_strategy_signals(
                     "cross_feature": cross_features.get(int(c.id)) if c.id is not None else {},
                     "news_metric": normalized_news_metric,
                 }
-                key = (int(c.id), str(code))
+                key = (symbol_key, market, str(code))
                 row = existing.get(key)
                 if not row:
                     row = StrategySignalRun(
@@ -1361,6 +1367,9 @@ def refresh_strategy_signals(
                     db.add(row)
                     existing[key] = row
 
+                # Provenance follows the current candidate row; the row's
+                # identity is the business key above, not this id.
+                row.source_candidate_id = c.id
                 row.strategy_name = strategy_name
                 row.strategy_version = strategy_version
                 row.risk_level = risk_level
