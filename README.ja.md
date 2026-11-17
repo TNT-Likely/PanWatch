@@ -37,9 +37,16 @@
 <details open>
 <summary>❤️ スポンサー</summary>
 
-| ロゴ | 紹介 |
-| --- | --- |
-| <a href="https://88api.ai/sign-up?aff=W38W"><img src="./docs/sponsors/88api-logo.png" alt="88API" width="120"></a> | [**88API トークン集約プラットフォーム**](https://88api.ai/sign-up?aff=W38W)<br><br>🧠 GPT、Claude、Gemini、Grok、DeepSeek、Kimi、GLM などの言語モデルやコーディングモデルを利用できます。<br>🎨 画像モデル: GPT-Image、Gemini、Grok など。<br>🎬 動画モデル: Seedance、Veo、MiniMax H3、Kling、Grok など。<br>🎙️ 音声機能: Whisper、TTS など。文章作成から画像の生成・編集、動画生成やナレーションまで対応しています。<br>🎁 新規ユーザーは登録時にトライアルクレジットを受け取り、モデルの性能を試せます。サイトではライブのカスタマーサポートも利用できます！<br>👉 香港の登記企業が運営 · 安定した可用性 · フル機能のサービスを完全に提供 · モデルの性能を落とすことはありません · 請求書の発行に対応<br><br>[**今すぐ登録 →**](https://88api.ai/sign-up?aff=W38W) |
+<a href="https://modelflare.dev/sign-up?utm_source=github&utm_campaign=panwatch"><img src="./docs/sponsors/modelflare_banner_en.png" alt="Modelflare" width="720"></a>
+
+**Modelflare** が本プロジェクトをスポンサーしています！米国 Havenbyte LLC が運営し、フルスペックで安定したモデルを低コストで提供。GPT、Claude、Gemini、Grok ほか 40+ の画像/動画モデルに対応しています。OpenAI 専用グループには **毎日 65% / 75% / 85% のキャッシュヒット率保証**付き。**US$20 のチャージで GPT 0.015x**、**US$50 で Claude 0.03x** をアンロックできます。[**専用リンクで登録**](https://modelflare.dev/sign-up?utm_source=github&utm_campaign=panwatch)
+
+<table>
+  <tr>
+    <td><a href="https://88api.ai/sign-up?aff=W38W"><img src="./docs/sponsors/88api-logo.png" alt="88API" width="120"></a></td>
+    <td><a href="https://88api.ai/sign-up?aff=W38W"><b>88API トークン集約プラットフォーム</b></a><br><br>🧠 GPT、Claude、Gemini、Grok、DeepSeek、Kimi、GLM などの言語モデルやコーディングモデルを利用できます。<br>🎨 画像モデル: GPT-Image、Gemini、Grok など。<br>🎬 動画モデル: Seedance、Veo、MiniMax H3、Kling、Grok など。<br>🎙️ 音声機能: Whisper、TTS など。文章作成から画像の生成・編集、動画生成やナレーションまで対応しています。<br>🎁 新規ユーザーは登録時にトライアルクレジットを受け取り、モデルの性能を試せます。サイトではライブのカスタマーサポートも利用できます！<br>👉 香港の登記企業が運営 · 安定した可用性 · フル機能のサービスを完全に提供 · モデルの性能を落とすことはありません · 請求書の発行に対応<br><br><a href="https://88api.ai/sign-up?aff=W38W"><b>今すぐ登録 →</b></a></td>
+  </tr>
+</table>
 
 </details>
 
