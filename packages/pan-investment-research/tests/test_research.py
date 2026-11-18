@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from pan_investment_research import (
-    Evidence, InvestmentResearch, ModelReply, ResearchInput, ResearchPolicy, Security,
+    Evidence, InvestmentResearch, ModelReply, ResearchInput, ResearchPolicy, ResearchSignal, Security,
 )
 from pan_investment_research.budget import Budget, BudgetExceeded
 
@@ -234,6 +234,36 @@ def test_multi_group_and_same_symbol_in_different_markets():
     assert len(result.recommendations) == 2
     assert model.calls["strategy"] == model.calls["risk"] == model.calls["decision"] == 1
     assert result.usage["attempts"] == 15
+
+
+def with_signals(data):
+    return data.model_copy(update={"signals": [
+        ResearchSignal(stock_key=s.key, domain="technical", reasons=["breakout"], observed_at=data.as_of, material=True)
+        for s in data.securities]})
+
+
+def test_multi_group_scopes_signals_to_their_group():
+    data = with_signals(prepared(("CN:SAME", "US:SAME")))
+    model = Model()
+    result = run(model, data, ResearchPolicy(max_group_size=1, max_attempts=28, max_output_tokens=4096, max_total_tokens=200000))
+    assert result.status == "ready", result.reason
+    assert len(result.recommendations) == 2
+
+
+def test_multi_group_evidence_request_scopes_signals_to_their_group():
+    class GroupIssue(Model):
+        async def complete(self, *, role, **kwargs):
+            reply = await super().complete(role=role, **kwargs)
+            if role == "risk" and self.calls[role] == 1:
+                body = json.loads(reply.content)
+                body["issues"][0]["stock_key"] = "*"
+                reply.content = json.dumps(body)
+            return reply
+    data = with_signals(prepared(("CN:SAME", "US:SAME")))
+    model = GroupIssue(risk_feedback="evidence_needed")
+    result = run(model, data, ResearchPolicy(max_group_size=1, max_attempts=60, max_output_tokens=4096, max_total_tokens=1000000))
+    assert result.completion == "complete", result.reason
+    assert len(result.recommendations) == 2
 
 
 class DoubleFaultModel(Model):
