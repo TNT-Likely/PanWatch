@@ -78,7 +78,8 @@ def test_failed_signal_is_retryable_and_does_not_publish_a_draft(host, monkeypat
     fast_config(engine, max_attempts=1)
     monkeypatch.setattr(IntradayMonitorAgent, 'collect', lambda self, context: changed(context))
     first = asyncio.run(IntradayMonitorAgent().run(make_context('failure')))
-    assert first.raw_data['completion'] == 'budget_exhausted' and first.raw_data['suggestions'] == {}
+    assert first.raw_data['completion'] == 'degraded' and first.raw_data['suggestions'] == {}
+    assert first.raw_data['research_report']['runtime']['group_failures'] == {'CN:600519': 'budget_exhausted'}
     with Session(engine) as db, db.begin():
         from src.platform.persistence.models import AgentConfig
         row = db.scalars(select(AgentConfig).where(AgentConfig.name == 'intraday_monitor')).one()

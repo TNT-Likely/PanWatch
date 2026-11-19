@@ -10,7 +10,7 @@ import { Switch } from '@panwatch/base-ui/components/ui/switch'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 
 export interface ResearchAgentConfig { name: string; config: Record<string, unknown> }
-type TemplateId = 'intraday_fast' | 'premarket_balanced' | 'postmarket_deep' | 'custom_research'
+type TemplateId = 'intraday_fast' | 'premarket_stable' | 'postmarket_stable' | 'premarket_balanced' | 'postmarket_deep' | 'custom_research'
 type Specialist = 'technical' | 'flow' | 'events'
 interface Template { id: TemplateId; graph: string; defaults: Record<string, unknown>; allowed_specialists: Specialist[] }
 interface Templates { default_template: TemplateId; templates: Template[] }
@@ -88,7 +88,7 @@ export default function ResearchConfigDialog({ agent, onClose, onSaved }: {
         <div className="space-y-2"><div className="flex items-center justify-between gap-3"><Label htmlFor="research-budget-enabled">{key('budgetEnabled')}</Label><Switch id="research-budget-enabled" checked={budgetEnabled} onCheckedChange={budget_enabled => setValue({ ...value, budget_enabled })} /></div><p className="text-xs text-muted-foreground">{key('budgetHint')}</p></div>
         {budgetEnabled && <div className="grid grid-cols-2 gap-3">{numberInput('attempts', 'max_attempts', 1, 100)}{numberInput('deadline', 'deadline_seconds', 1, 600)}</div>}
         <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer text-sm">{key('advanced')}</summary><div className="mt-3 grid grid-cols-2 gap-3">
-          {numberInput('concurrency', 'concurrency', 1, 6)}{!fast && numberInput('feedback', 'max_feedback', 0, 2)}{budgetEnabled && <>{numberInput('tools', 'max_tools', 0, 30)}{numberInput('tokens', 'max_total_tokens', 1000, 1000000)}{numberInput('output', 'max_output_tokens', 128)}</>}
+          {numberInput('concurrency', 'concurrency', 1, 6)}{!fast && numberInput('feedback', 'max_feedback', 0, 2)}{budgetEnabled && <>{numberInput('tokens', 'max_total_tokens', 1000, 1000000)}{numberInput('output', 'max_output_tokens', 128)}</>}
         </div></details>
         {!valid && <p role="alert" className="text-xs text-destructive">{key('invalid')}</p>}
       </div>}

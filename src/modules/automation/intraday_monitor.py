@@ -96,6 +96,8 @@ class IntradayMonitorAgent(SessionResearchAgent):
             events_days=3,
         )
         pack = packs.get(symbol)
+        if capture := getattr(context, "_research_capture", None):
+            capture({"signal_pack": pack})
 
         if getattr(context, "_research_fast", False):
             # Delay historical context/fulltext work until the change gate admits this stock.

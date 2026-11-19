@@ -2238,6 +2238,11 @@ def _m139_retire_session_legacy(conn: Connection) -> None:
                      {"id": identity, "config": json.dumps(config, ensure_ascii=False)})
 
 
+def _m140_research_run_leases(conn: Connection) -> None:
+    for name, declaration in (("lease_owner", "VARCHAR"), ("lease_until", "FLOAT")):
+        _add_column_if_missing(conn, "research_runs", name, f"ALTER TABLE research_runs ADD COLUMN {name} {declaration}")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2278,6 +2283,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(137, "stock_asset_type", _m137_stock_asset_type),
     Migration(138, "investment_research_delivery", _m138_investment_research),
     Migration(139, "retire_session_legacy", _m139_retire_session_legacy),
+    Migration(140, "research_run_leases", _m140_research_run_leases),
 )
 
 

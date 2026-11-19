@@ -1,5 +1,5 @@
 """Research audit and delivery records; existing business tables remain compatible."""
-from sqlalchemy import Column, DateTime, Integer, JSON, String, func
+from sqlalchemy import Column, DateTime, Float, Integer, JSON, String, func
 
 from src.platform.persistence.database import Base
 
@@ -17,6 +17,8 @@ class ResearchRun(Base):
     progress = Column(JSON, default=dict)
     created_at = Column(DateTime, server_default=func.now())
     finished_at = Column(DateTime, nullable=True)
+    lease_owner = Column(String, nullable=True)
+    lease_until = Column(Float, nullable=True)
 
 
 class ResearchArtifact(Base):

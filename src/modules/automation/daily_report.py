@@ -78,6 +78,8 @@ class DailyReportAgent(SessionResearchAgent):
             include_events=True,
             events_days=7,
         )
+        if capture := getattr(context, "_research_capture", None):
+            capture({"signal_packs": packs, "indices": all_indices})
 
         context_builder = ContextBuilder()
         context_pack = await context_builder.build_symbol_contexts(
@@ -91,7 +93,7 @@ class DailyReportAgent(SessionResearchAgent):
             persist_snapshot=not getattr(context, "_research_collect", False),
         )
 
-        if not all_indices and not any(p.quote for p in packs.values()):
+        if not getattr(context, "_research_collect", False) and not all_indices and not any(p.quote for p in packs.values()):
             raise RuntimeError("数据采集失败：未获取到任何行情数据，请检查网络连接")
 
         return {

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from src.modules.research.orchestration.models import (
     ResearchRun, ResearchArtifact, ResearchDelivery, ResearchOutbox,
 )
-from src.platform.persistence.migrations import _m138_investment_research
+from src.platform.persistence.migrations import _m138_investment_research, _m140_research_run_leases
 
 
 MODELS = (ResearchRun, ResearchArtifact, ResearchDelivery, ResearchOutbox)
@@ -33,6 +33,7 @@ def test_research_migration_matches_orm_and_preserves_records(existing_tables):
                 model.__table__.create(engine)
         with engine.begin() as conn:
             _m138_investment_research(conn)
+            _m140_research_run_leases(conn)
         for model in MODELS:
             name = model.__tablename__
             assert schema(engine, name) == schema(reference, name)
@@ -49,7 +50,9 @@ def test_research_migration_matches_orm_and_preserves_records(existing_tables):
             before = {m.__tablename__: conn.execute(text(f"SELECT * FROM {m.__tablename__}")).all()
                       for m in MODELS}
             _m138_investment_research(conn)
+            _m140_research_run_leases(conn)
             _m138_investment_research(conn)
+            _m140_research_run_leases(conn)
             after = {m.__tablename__: conn.execute(text(f"SELECT * FROM {m.__tablename__}")).all()
                      for m in MODELS}
         assert after == before
