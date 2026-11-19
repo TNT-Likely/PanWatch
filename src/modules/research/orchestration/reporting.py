@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from src.modules.research.signals.actions import ACTION_LABELS, ACTION_LABELS_EN, normalize_suggestion
 
 
-def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), as_of="", language="zh-CN", timezone="Asia/Shanghai", elapsed_seconds=None):
+def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), signals=(), as_of="", language="zh-CN", timezone="Asia/Shanghai", elapsed_seconds=None):
     en = language == "en-US"
     def tr(zh, english):
         return english if en else zh
@@ -62,9 +62,20 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
     completion = research.get("completion", "complete")
     states = {"complete": tr("研究完成", "Complete"), "skipped": tr("无实质变化，已跳过研究", "No material change; research skipped"), "timeout": tr("研究超时", "Timed out"),
         "budget_exhausted": tr("研究预算耗尽", "Budget exhausted"), "validation_failed": tr("结论校验未通过", "Validation failed"),
-        "risk_rejected": tr("风控未通过", "Risk rejected")}
+        "risk_rejected": tr("风控未通过", "Risk rejected"), "degraded": tr("已交付降级报告", "Limited report available"),
+        "data_unavailable": tr("数据不可用", "Market data unavailable")}
+    failures = research.get("group_failures", {})
+    states.update(provider_auth=tr("模型鉴权失败", "Model authentication failed"),
+                  provider_rate_limit=tr("模型服务限流", "Model provider rate limited"),
+                  provider_request=tr("模型请求被服务商拒绝", "Model provider rejected the request"),
+                  model_unavailable=tr("模型服务不可用", "Model service unavailable"))
     lines = [f"{states.get(completion, completion)} · {tr('数据截至', 'Data as of')} {stamp(as_of)}"]
-    if completion not in {"complete", "skipped"}:
+    if completion == "degraded":
+        lines.append(tr("**已保留本次采集的行情和已核实内容。正式建议和预测需要完整投研。**",
+                        "**Captured facts and validated findings are available. Formal recommendations require complete research.**"))
+    elif completion == "data_unavailable":
+        lines.append(tr("**本次未取得可用行情。**", "**No usable quotes were captured for this run.**"))
+    elif completion not in {"complete", "skipped"}:
         lines += [tr("**研究未完成：以下仅为草案，未发布正式建议或预测。**", "**Incomplete research: drafts only; no formal recommendations or predictions published.**")]
         if research.get("reason"):
             lines.append(tr("原因：", "Reason: ") + research["reason"])
@@ -95,10 +106,31 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
     lines.append("## " + tr("个股分析", "Stock analysis"))
     for key in keys:
         lines.append("### " + name(key))
+        if key in failures:
+            lines.append(tr("研究状态：", "Research status: ") + states.get(failures[key], failures[key]))
         technical = facts.get((key, "technical"), {})
         quote, indicators = technical.get("quote") or {}, technical.get("indicators") or {}
         if quote:
             lines.append(tr("行情：", "Quote: ") + f"{number(quote.get('current_price'))} · {number(quote.get('change_pct'), signed=True)}%" + (f" · {stamp(quote['timestamp'])}" if quote.get("timestamp") else ""))
+        if completion in {"degraded", "data_unavailable"}:
+            labels = {
+                "atr_price_change": tr("价格波动超过阈值", "Price change exceeded threshold"),
+                "volume_change": tr("成交量变化", "Volume change"),
+                "technical_state_changed": tr("技术状态变化", "Indicator change"),
+                "support_broken": tr("跌破支撑", "Support broken"),
+                "resistance_broken": tr("突破阻力", "Resistance broken"),
+                "position_risk_changed": tr("持仓风险变化", "Position risk change"),
+                "new_captured_event": tr("发现新事件", "New event captured"),
+                "material_captured_event": tr("采集到重要事件", "Material event captured"),
+            }
+            triggers = list(dict.fromkeys(labels[reason] for signal in signals if signal["stock_key"] == key
+                                          for reason in signal["reasons"] if reason in labels))
+            if triggers:
+                lines.append(tr("已核实的触发项：", "Captured triggers: ") + " · ".join(triggers))
+            events = (facts.get((key, "events")) or {}).get("items") or []
+            for event in events[:3]:
+                if event.get("title"):
+                    lines.append(f"- {text(event['title'])} · {text(event.get('source'))} · {text(event.get('time'))}")
         for domain, label in (("technical", tr("技术面", "Technicals")), ("flow", tr("资金面", "Capital flow")), ("events", tr("消息面", "News and events"))):
             statements = claims(key, domain)
             if statements:
@@ -152,7 +184,9 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         lines.append(tr("暂无有效关注条件，需补充证据并完成研究。", "No validated watch conditions; further evidence and completed research are required."))
 
     actions, summary = [], ["## " + tr("操作建议", "Action summary")]
-    if completion not in {"complete", "skipped"}:
+    if completion in {"degraded", "data_unavailable"}:
+        summary.append(tr("**暂无正式操作建议。**", "**No formal recommendations are available.**"))
+    elif completion not in {"complete", "skipped"}:
         summary.append(tr("**研究未完成，暂无正式操作建议；草案不作为操作指令。**", "**Research incomplete: no formal action; drafts are not instructions.**"))
     for key, rec in plans.items() if completion == "complete" else []:
         actions.append({**rec, "stock_name": names.get(key, key)})
@@ -221,5 +255,6 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
             "title": f"{name(e['stock_key'])} · {domains[e['domain']]} · {text(', '.join(providers) or e['source'])}", "content": "\n\n".join(content)})
     return {"version": 3, "body": "\n\n".join(lines), "action_summary": action_summary, "actions": actions,
             "content": "\n\n".join([lines[0], action_summary, *lines[1:]]), "process": process, "evidence": evidence_rows,
-            "runtime": {"completion": completion, "graph": research.get("graph", "research"), "as_of": stamp(as_of), "stock_count": len(keys), "elapsed_seconds": elapsed_seconds},
+            "runtime": {"completion": completion, "graph": research.get("graph", "research"), "as_of": stamp(as_of),
+                        "stock_count": len(keys), "elapsed_seconds": elapsed_seconds, "group_failures": failures},
             "models": sorted({a["model"] for a in artifacts if a.get("model")}), "usage": research.get("usage", {})}

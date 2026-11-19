@@ -17,6 +17,7 @@ class ModelReply:
     tool_calls: list[dict] = field(default_factory=list)
     usage: dict[str, Any] = field(default_factory=dict)
     finish_reason: str = ""
+    response_items: list[dict] = field(default_factory=list)
 
 
 class ResearchModel(Protocol):

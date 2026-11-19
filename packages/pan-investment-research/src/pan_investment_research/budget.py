@@ -10,14 +10,21 @@ class BudgetExceeded(RuntimeError):
 
 
 class Budget:
-    def __init__(self, policy: ResearchPolicy):
+    def __init__(self, policy: ResearchPolicy, *, deadline: float | None = None, usage=None):
         self.policy = policy
         self.expires = time.monotonic() + policy.deadline_seconds if policy.budget_enabled else None
+        if deadline is not None:
+            self.expires = min(self.expires, deadline) if self.expires is not None else deadline
         self.attempts = self.tools = self.feedback = 0
         self.input_tokens = self.output_tokens = 0
         self.unknown_usage = 0
         self.responses = 0
         self.reserved_tokens = 0
+        if usage:
+            for field in ("attempts", "tools", "feedback", "input_tokens", "output_tokens",
+                          "unknown_usage", "reserved_tokens"):
+                setattr(self, field, usage.get(field, 0))
+            self.responses = self.attempts
         self.lock = asyncio.Lock()
         self.semaphore = asyncio.Semaphore(policy.concurrency)
 
@@ -26,7 +33,7 @@ class Budget:
             return None
         value = self.expires - time.monotonic()
         if value <= 0:
-            raise BudgetExceeded("research deadline exceeded")
+            raise TimeoutError("research deadline exceeded")
         return value
 
     async def attempt(self, reserve=0, tokens=0):

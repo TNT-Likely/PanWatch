@@ -103,7 +103,7 @@ def test_context_failure_is_still_recorded(monkeypatch):
     {"stocks": [], "stock_data": None, "skip_reason": "市场休市"},
     {"stocks": [], "stock_data": None},
 ])
-def test_real_intraday_batch_without_data_does_not_call_ai_or_record_report(monkeypatch, data, host):
+def test_closed_market_skips_but_unavailable_quotes_are_recorded_without_ai(monkeypatch, data, host):
     from src.modules.automation.intraday_monitor import IntradayMonitorAgent
 
     scheduler, _, context, record = scheduler_fixture(
@@ -118,4 +118,8 @@ def test_real_intraday_batch_without_data_does_not_call_ai_or_record_report(monk
     asyncio.run(scheduler._run_agent("intraday_monitor"))
     context.ai_client.chat.assert_not_awaited()
     context.notifier.notify_with_result.assert_not_awaited()
-    record.assert_not_called()
+    if data.get("skip_reason"):
+        record.assert_not_called()
+    else:
+        record.assert_called_once()
+        assert "数据不可用" in record.call_args.kwargs["result"]

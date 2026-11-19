@@ -386,9 +386,11 @@ def test_incomplete_research_keeps_history_but_never_publishes_fake_watch_predic
     monkeypatch.setattr(agent, "collect", collected)
     monkeypatch.setattr(service, "ResearchModelGateway", lambda client: scripts.DirectionalModel(reject=after_strategy))
     result = asyncio.run(agent.run(make_context()))
-    assert result.raw_data["completion"] == ("risk_rejected" if after_strategy else "budget_exhausted")
+    assert result.raw_data["completion"] == "degraded"
+    assert result.raw_data["research_report"]["runtime"]["group_failures"] == {
+        "CN:600519": "risk_rejected" if after_strategy else "budget_exhausted"}
     assert not result.raw_data["suggestions"]
-    assert "研究未完成" in result.content
+    assert "已交付降级报告" in result.content and "行情：100.00" in result.content
     if after_strategy:
         assert result.raw_data["drafts"][0]["outlook"] == "bullish"
     else:
@@ -402,32 +404,34 @@ def test_incomplete_research_keeps_history_but_never_publishes_fake_watch_predic
 
 
 @pytest.mark.parametrize("persistent", [False, True])
-def test_decision_notes_violation_preserves_publication_gate(host, monkeypatch, persistent):
+def test_risk_notes_violation_preserves_publication_gate(host, monkeypatch, persistent):
     import json
     engine, _ = host
-    class DecisionNotes(scripts.Model):
+    class RiskNotes(scripts.Model):
         async def complete(self, *, role, **kwargs):
             reply = await super().complete(role=role, **kwargs)
-            if role == "decision" and (persistent or self.calls[role] == 1):
+            if role == "risk" and (persistent or self.calls[role] == 1):
                 report = json.loads(reply.content)
-                report["session_notes"] = [{"stock_key": "CN:600519", "summary": "Forbidden final note",
-                    "evidence_ids": report["recommendations"][0]["evidence_ids"]}]
+                report["session_notes"] = [{"stock_key": "CN:600519", "summary": "Forbidden risk note",
+                    "evidence_ids": self.payloads[-1][1]["plan"][0]["evidence_ids"]}]
                 reply.content = json.dumps(report)
             return reply
-    model, agent = DecisionNotes(), PremarketOutlookAgent()
+    model, agent = RiskNotes(), PremarketOutlookAgent()
     monkeypatch.setattr(service, "ResearchModelGateway", lambda client: model)
     configure(engine, agent.name)
     monkeypatch.setattr(agent, "collect", collected)
     result = asyncio.run(agent.run(make_context()))
-    assert model.calls["decision"] == 2
-    assert result.raw_data["completion"] == ("validation_failed" if persistent else "complete")
+    assert model.calls["risk"] == 2 and model.calls["decision"] == 0
+    assert result.raw_data["completion"] == ("degraded" if persistent else "complete")
     with Session(engine) as db:
         assert len(db.scalars(select(AnalysisHistory)).all()) == 1
         assert len(db.scalars(select(StockSuggestion)).all()) == (0 if persistent else 1)
         assert len(db.scalars(select(AgentPredictionOutcome)).all()) == (0 if persistent else 2)
         run = db.scalars(select(ResearchRun)).one()
-        assert run.progress["decision"]["status"] == ("failed" if persistent else "done")
-        assert ("研究未完成" in result.content) == persistent
+        assert run.progress["risk"]["status"] == ("failed" if persistent else "done")
+        assert ("已交付降级报告" in result.content) == persistent
+        if not persistent:
+            assert run.progress["decision"]["kind"] == "rule"
 
 
 def test_english_report_distinguishes_market_view_from_account_execution(host, monkeypatch):
@@ -445,20 +449,18 @@ def test_english_report_distinguishes_market_view_from_account_execution(host, m
 
 
 @pytest.mark.parametrize("agent_cls", [PremarketOutlookAgent, DailyReportAgent])
-def test_batch_research_reads_all_targets_with_three_tools_and_one_portfolio_decision(host, monkeypatch, agent_cls):
+def test_batch_research_supplies_fixed_evidence_and_finalizes_without_tools(host, monkeypatch, agent_cls):
     import json
-    from pan_investment_research import ModelReply
     engine, _ = host
 
     class BatchModel(scripts.Model):
-        async def complete(self, *, role, messages, before_attempt, **kwargs):
-            if role in {"technical", "flow", "events"} and not self.calls[role]:
-                await before_attempt()
-                self.calls[role] += 1
-                keys = [s["key"] for s in json.loads(messages[1]["content"])["input"]["securities"]]
-                return ModelReply("", "script", tool_calls=[{"id": role, "type": "function", "function": {
-                    "name": f"read_{role}_details", "arguments": json.dumps({"stock_keys": keys})}}])
-            return await super().complete(role=role, messages=messages, before_attempt=before_attempt, **kwargs)
+        async def complete(self, *, role, messages, tools, **kwargs):
+            assert tools == []
+            if role in {"technical", "flow", "events"}:
+                data = json.loads(messages[1]["content"])["input"]
+                assert {item["stock_key"] for item in data["evidence"] if item["domain"] == role} == {
+                    stock["key"] for stock in data["securities"]}
+            return await super().complete(role=role, messages=messages, **kwargs)
 
     model, agent = BatchModel(), agent_cls()
     monkeypatch.setattr(service, "ResearchModelGateway", lambda client: model)
@@ -468,8 +470,9 @@ def test_batch_research_reads_all_targets_with_three_tools_and_one_portfolio_dec
     result = asyncio.run(agent.run(context))
     assert result.raw_data["completion"] == "complete", result.content
     assert set(result.raw_data["suggestions"]) == {"CN:600519", "CN:002594", "CN:300750"}
-    assert result.raw_data["usage"]["tools"] == 3
-    assert model.calls["strategy"] == model.calls["risk"] == model.calls["decision"] == 1
+    assert result.raw_data["usage"]["tools"] == 0
+    assert model.calls["strategy"] == model.calls["risk"] == 1
+    assert model.calls["decision"] == 0
     with Session(engine) as db:
         assert len(db.scalars(select(StockSuggestion)).all()) == 3
         assert len(db.scalars(select(AgentPredictionOutcome)).all()) == 6
@@ -480,6 +483,8 @@ def test_batch_details_rejects_an_entire_mixed_scope_request():
     from src.modules.research.orchestration.gateway import EvidenceTools
     data = scripts.prepared(("CN:600519", "US:600519"))
     tools = EvidenceTools(data.evidence)
+    schema = tools.scoped_schemas("technical", ["CN:600519"])[0]["function"]["parameters"]
+    assert schema["properties"]["stock_keys"]["items"]["enum"] == ["CN:600519"]
     found = asyncio.run(tools.execute("read_technical_details", {"stock_keys": ["CN:600519", "US:600519"]},
         stock_keys=["CN:600519", "US:600519"]))
     assert {e.stock_key for e in found} == {"CN:600519", "US:600519"}

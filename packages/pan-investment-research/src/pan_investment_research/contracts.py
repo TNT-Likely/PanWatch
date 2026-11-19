@@ -50,6 +50,15 @@ class ResearchInput(Contract):
     portfolio: dict[str, Any] = Field(default_factory=dict)
     signals: list[ResearchSignal] = Field(default_factory=list)
 
+    def for_stocks(self, stocks: list[Security]) -> ResearchInput:
+        keys = {stock.key for stock in stocks}
+        return ResearchInput.model_validate({
+            **self.model_dump(exclude={"securities", "evidence", "signals"}),
+            "securities": stocks,
+            "evidence": [item for item in self.evidence if item.stock_key in keys or item.stock_key == "*"],
+            "signals": [signal for signal in self.signals if signal.stock_key in keys],
+        })
+
     @model_validator(mode="after")
     def validate_scope(self):
         keys = [s.key for s in self.securities]
@@ -138,11 +147,13 @@ class Artifact(Contract):
 class ResearchResult(Contract):
     run_id: str
     status: Literal["ready", "review", "skipped"]
-    completion: Literal["complete", "skipped", "timeout", "budget_exhausted", "validation_failed", "risk_rejected"] = "complete"
+    completion: Literal["complete", "skipped", "timeout", "budget_exhausted", "validation_failed",
+                        "risk_rejected", "degraded", "data_unavailable"] = "complete"
     graph: Literal["research", "intraday_fast"] = "research"
     recommendations: list[Recommendation]
     artifacts: list[Artifact]
     reason: str = ""
+    group_failures: dict[str, str] = Field(default_factory=dict)
     usage: dict[str, Any] = Field(default_factory=dict)
 
 

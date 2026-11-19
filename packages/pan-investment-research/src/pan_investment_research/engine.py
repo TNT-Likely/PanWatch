@@ -96,6 +96,7 @@ class Dependencies:
     tools: ResearchTools | None
     events: ResearchEvents | None
     budget: Budget
+    finalize_plan: bool = False
     artifacts: dict = field(default_factory=dict)
     plan: list = field(default_factory=list)
     repaired: set = field(default_factory=set)
@@ -104,6 +105,12 @@ class Dependencies:
         if self.events:
             await self.events.publish({"run_id": self.prepared.run_id, "role": role,
                                        "status": status, **details})
+
+    def tool_schemas(self, role, prepared):
+        scoped = getattr(self.tools, "scoped_schemas", None)
+        if scoped:
+            return scoped(role, [stock.key for stock in prepared.securities])
+        return self.tools.schemas(role)
 
 
 class InvestmentResearch:
@@ -117,6 +124,8 @@ class InvestmentResearch:
 
     async def _model(self, role, payload, deps, *, messages=None, tools=None):
         reserve = (0 if role == "strategy" else 1) if deps.policy.graph == "intraday_fast" else {"manager": 3, "strategy": 2, "risk": 1, "decision": 0}.get(role, 4)
+        if deps.finalize_plan and deps.policy.graph == "research":
+            reserve = max(0, reserve - 1)
         schema = RoleReport.model_json_schema()
         keys = [s["key"] for s in payload.get("input", {}).get("securities", [])] or [s.key for s in deps.prepared.securities]
         for name in ("Claim", "Issue", "Recommendation", "SessionNote"):
@@ -339,8 +348,17 @@ class InvestmentResearch:
             prepared.portfolio = {}  # Market specialists do not assess account execution.
             prepared.evidence = [e for e in prepared.evidence if e.domain in {role, "market"}]
             payload = {"input": market_input(prepared), "issues": state.get("issues", [])}
-            schemas = deps.tools.schemas(role) if deps.tools and state.get("rounds", 0) < deps.policy.max_tool_rounds else []
-            reply, messages = await self._model(role, payload, deps, messages=state.get("messages"), tools=schemas)
+            rounds = state.get("rounds", 0)
+            schemas = deps.tool_schemas(role, prepared) if deps.tools and rounds < deps.policy.max_tool_rounds else []
+            messages = state.get("messages")
+            if messages and rounds and not schemas:
+                # Some endpoints refuse native tool history once the tools are withdrawn.
+                messages = [
+                    {"role": "user", "content": "Captured tool result: " + message["content"]}
+                    if message["role"] == "tool" else message
+                    for message in messages if not message.get("tool_calls")
+                ]
+            reply, messages = await self._model(role, payload, deps, messages=messages, tools=schemas)
             return {"reply": reply, "messages": messages, "prepared": prepared.model_dump(mode="json")}
 
         async def tools(state, runtime: Runtime[Dependencies]):
@@ -348,9 +366,11 @@ class InvestmentResearch:
             if not deps.tools or state.get("rounds", 0) >= deps.policy.max_tool_rounds:
                 raise BudgetExceeded("expert tool round limit")
             prepared = ResearchInput.model_validate(state["prepared"])
-            allowed = {t["function"]["name"] for t in deps.tools.schemas(state["role"])}
-            messages = state["messages"] + [{"role": "assistant", "content": reply.content or None,
-                                            "tool_calls": reply.tool_calls}]
+            allowed = {t["function"]["name"] for t in deps.tool_schemas(state["role"], prepared)}
+            assistant = {"role": "assistant", "content": reply.content or None, "tool_calls": reply.tool_calls}
+            if reply.response_items:
+                assistant["response_items"] = reply.response_items
+            messages = state["messages"] + [assistant]
             evidence = {e.id: e for e in prepared.evidence}
             for call in reply.tool_calls:
                 fn = call["function"]
@@ -515,10 +535,9 @@ class InvestmentResearch:
             for group in state["tasks"]:
                 start = int(group) * deps.policy.max_group_size
                 stocks = deps.prepared.securities[start:start + deps.policy.max_group_size]
-                keys = {s.key for s in stocks}
-                prepared = deps.prepared.model_copy(update={"securities": stocks,
-                    "evidence": [e for e in deps.prepared.evidence if e.stock_key in keys or e.stock_key == "*"]})
-                jobs.append(Send("research", {"prepared": prepared.model_dump(mode="json"), "group": group, "artifacts": {}}))
+                prepared = deps.prepared.for_stocks(stocks)
+                jobs.append(Send("research", {"prepared": prepared.model_dump(mode="json"),
+                                               "group": state.get("group", group), "artifacts": {}}))
             return jobs
 
         async def research(state, runtime: Runtime[Dependencies]):
@@ -560,6 +579,14 @@ class InvestmentResearch:
             return await role_node(s, runtime, "risk")
 
         async def decision(s, runtime: Runtime[Dependencies]):
+            deps = runtime.context
+            if deps.finalize_plan:
+                report = RoleReport(summary=(
+                    "The risk-approved plan is finalized without a model call." if deps.prepared.language == "en-US"
+                    else "风控已通过，程序按批准的计划定稿。"),
+                    recommendations=deps.plan, verdict="pass")
+                await deps.emit("decision", "done", kind="rule")
+                return self._store(s, "decision", report, "", deps, kind="rule")
             return await role_node(s, runtime, "decision")
 
         async def revise(state, runtime: Runtime[Dependencies]):
@@ -576,10 +603,9 @@ class InvestmentResearch:
                     issues = [i for i in state["issues"] if i["stock_key"] in keys | {"*"}]
                     if not issues:
                         continue
-                    prepared = deps.prepared.model_copy(update={"securities": stocks,
-                        "evidence": [e for e in deps.prepared.evidence if e.stock_key in keys or e.stock_key == "*"]})
+                    prepared = deps.prepared.for_stocks(stocks)
                     current = {**state, "prepared": prepared.model_dump(mode="json"),
-                               "group": str(index // deps.policy.max_group_size), "epoch": state.get("epoch", 0) + 1,
+                               "group": state.get("group", str(index // deps.policy.max_group_size)), "epoch": state.get("epoch", 0) + 1,
                                "issues": issues, "messages": [], "rounds": 0}
                     for domain in sorted({i["domain"] for i in issues}):
                         result = await self.expert_graph.ainvoke({**current, "role": domain}, context=deps)
@@ -613,14 +639,18 @@ class InvestmentResearch:
         return graph.compile()
 
     async def run(self, prepared: ResearchInput, *, model: ResearchModel, tools=None, events=None,
-                  policy: ResearchPolicy | None = None) -> ResearchResult:
+                  policy: ResearchPolicy | None = None, budget: Budget | None = None,
+                  group: str | None = None, finalize_plan: bool = False) -> ResearchResult:
         policy = policy or ResearchPolicy()
         prepared = prepared.model_copy(deep=True)
-        deps = Dependencies(prepared, policy, model, tools, events, Budget(policy))
+        deps = Dependencies(prepared, policy, model, tools, events, budget or Budget(policy), finalize_plan)
         try:
             graph = self.fast_graph if policy.graph == "intraday_fast" else self.graph
-            state = await asyncio.wait_for(graph.ainvoke({"artifacts": {}, "epoch": 0}, context=deps),
-                policy.deadline_seconds if policy.budget_enabled else None)
+            initial: State = {"artifacts": {}, "epoch": 0}
+            if group is not None:
+                initial["group"] = group
+            timeout = deps.budget.remaining()
+            state = await asyncio.wait_for(graph.ainvoke(initial, context=deps), timeout)
             if state.get("skipped"):
                 return ResearchResult(run_id=prepared.run_id, graph=policy.graph, status="skipped", completion="skipped", reason="no_material_change", recommendations=[], artifacts=list(deps.artifacts.values()), usage=deps.budget.snapshot())
             if state.get("verdict") != "pass":

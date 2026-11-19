@@ -1,8 +1,12 @@
 """Convert existing collection output into scoped, timestamped package inputs."""
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+import asyncio
 import hashlib
 import json
+import logging
+import math
+import time
 
 from pan_investment_research import Evidence, ResearchInput, ResearchSignal, Security
 from .signals import inspect_changes, published, material
@@ -12,22 +16,48 @@ from src.platform.persistence.worker import run_db_operation
 from src.modules.automation.scheduling_policy import scoped_context
 from src.platform.persistence.json_safe import to_jsonable
 
+logger = logging.getLogger(__name__)
 
-async def prepare(agent, context, run_id):
+
+async def prepare(agent, context, run_id, *, deadline, group_size, concurrency):
     # Partition before legacy symbol-keyed builders, retaining batched quotes per market.
     groups = {}
     for stock in context.watchlist:
         key = (stock.market, stock.symbol if agent.name == "intraday_monitor" else "*")
         groups.setdefault(key, []).append(stock)
-    securities, evidence, details, snapshots, signals = [], [], [], {}, []
+    batches = [stocks[i:i + group_size] for stocks in groups.values()
+               for i in range(0, len(stocks), group_size)]
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def collect(stocks):
+        scoped = scoped_context(context, stocks)
+        scoped.config, scoped.portfolio = deepcopy(scoped.config), deepcopy(scoped.portfolio)
+        scoped._research_collect = True
+        captured = {}
+        scoped._research_capture = captured.update
+        try:
+            async with asyncio.timeout(max(0, deadline - time.monotonic())):
+                async with semaphore:
+                    return scoped, await agent.collect(scoped)
+        except Exception as exc:
+            if not captured and not isinstance(exc, (TimeoutError, OSError)):
+                raise
+            logger.warning("Session data collection degraded: agent=%s error=%s", agent.name, type(exc).__name__)
+            return scoped, captured
+
+    async def optional(operation, default):
+        try:
+            async with asyncio.timeout(max(0, min(3, deadline - time.monotonic()))):
+                return await operation()
+        except Exception as exc:
+            logger.warning("Session enrichment unavailable: agent=%s error=%s", agent.name, type(exc).__name__)
+            return default
+
+    securities, evidence, snapshots, signals = [], [], {}, []
     context._research_gate_observations = {}
     market_snapshots = {}
-    for stocks in groups.values():
-        scoped = scoped_context(context, stocks)
-        scoped.config = deepcopy(scoped.config)
-        scoped.portfolio = deepcopy(scoped.portfolio)
-        scoped._research_collect = True
-        data = await agent.collect(scoped)
+    collected = await asyncio.gather(*(collect(stocks) for stocks in batches))
+    for stocks, (scoped, data) in zip(batches, collected, strict=True):
         if data.get("skip_reason"):
             continue
         observed = datetime.now(timezone.utc)
@@ -41,10 +71,13 @@ async def prepare(agent, context, run_id):
                     source="collection result", observed_at=observed, available_at=observed, content={"unavailable": True}))
                 continue
             positions = [p for p in scoped.portfolio.all_positions if p.symbol == stock.symbol and p.market == stock.market]
-            quote = to_jsonable(pack.quote) if pack.quote else None
+            price = getattr(pack.quote, "current_price", None)
+            if price is not None and (not math.isfinite(price) or price <= 0):
+                price = None
+            quote = to_jsonable(pack.quote) if price is not None else None
             expiry = observed + timedelta(seconds=60 if agent.name == "intraday_monitor" else 900)
             securities.append(Security(key=stock_key, name=stock.name,
-                price=getattr(pack.quote, "current_price", None) or None,
+                price=price,
                 quote_expires_at=expiry if quote else None,
                 held_quantity=sum(p.quantity for p in positions)))
             symbol_context = (data.get("symbol_contexts") or {}).get(stock.symbol) or data.get("symbol_context") or {}
@@ -60,17 +93,15 @@ async def prepare(agent, context, run_id):
                 context._research_gate_observations[stock_key] = observation
                 if found and not symbol_context:
                     from src.modules.research.context_builder import ContextBuilder
-                    enriched = await ContextBuilder().build_symbol_contexts(agent_name=agent.name, context=scoped,
-                        packs={stock.symbol: pack}, realtime_hours=6, extended_hours=24, history_days=7,
-                        kline_days=60, persist_snapshot=False)
+                    enriched = await optional(lambda: ContextBuilder().build_symbol_contexts(
+                        agent_name=agent.name, context=scoped, packs={stock.symbol: pack}, realtime_hours=6,
+                        extended_hours=24, history_days=7, kline_days=60, persist_snapshot=False), {})
                     symbol_context = enriched.get("symbols", {}).get(stock.symbol) or {}
             if getattr(context, "_research_fast", False) and found and stock.market.value == "CN":
                 if stock.market not in market_snapshots:
                     from src.modules.automation.daily_report import DailyReportAgent
-                    try:
-                        market_snapshots[stock.market] = await DailyReportAgent()._fetch_index_for_market(stock.market)
-                    except Exception:
-                        market_snapshots[stock.market] = []
+                    market_snapshots[stock.market] = await optional(
+                        lambda: DailyReportAgent()._fetch_index_for_market(stock.market), [])
                 data["indices"] = market_snapshots[stock.market]
             indices = to_jsonable(data.get("indices") or data.get("us_indices") or [])
             if indices:
@@ -79,7 +110,7 @@ async def prepare(agent, context, run_id):
                     source="PanWatch captured indices", observed_at=captured, available_at=captured, content={"indices": indices}))
             snapshots[stock_key] = to_jsonable(symbol_context)
             if agent.name == "daily_report":
-                prior = await prior_plan(stock_key, observed, context.config.settings.app_timezone)
+                prior = await optional(lambda: prior_plan(stock_key, observed, context.config.settings.app_timezone), None)
                 if prior:
                     evidence.append(Evidence(id=f"{stock_key}/prior-plan", stock_key=stock_key, domain="market",
                         source="saved premarket plan", observed_at=observed, available_at=observed, content={"prior_plan": prior}))
@@ -102,7 +133,7 @@ async def prepare(agent, context, run_id):
                 "technical": {"quote": quote, "indicators": pack.technical, "missing": pack.missing, "analysis_context": analysis_context},
                 "flow": {"capital_flow": pack.capital_flow, "indices": data.get("indices") or data.get("us_indices"),
                          "unsupported_or_missing": pack.capital_flow is None},
-                "events": {"items": news},
+                "events": {"items": sorted(news, key=lambda item: not material(item))[:10], "captured_count": len(news)},
             }
             for domain, payload in domains.items():
                 payload["sources"] = pack.sources
@@ -110,23 +141,24 @@ async def prepare(agent, context, run_id):
                 token = hashlib.sha256(json.dumps(full, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:12]
                 common = dict(stock_key=stock_key, domain=domain, source="PanWatch captured sources",
                               observed_at=observed, available_at=observed)
-                details.append(Evidence(id=f"{stock_key}/{domain}/{token}/detail", content=full, **common))
-                # Preserve all source identities; limit long document bodies, not target coverage.
+                # Fixed evidence is supplied up front, with bounded document excerpts.
                 preview = _preview(full)
                 evidence.append(Evidence(id=f"{stock_key}/{domain}/{token}/summary", content=preview, **common))
-    if not securities or not any(e.domain in {"technical", "flow", "events"} for e in evidence):
-        return None, details, snapshots
-    portfolio = to_jsonable(context.portfolio)
+    if not securities:
+        return None, snapshots
+    snapshot = to_jsonable(context.portfolio)
+    portfolio = {"accounts": [{"available_funds": account.get("available_funds")} for account in snapshot.get("accounts", [])],
+                 "buying_power_verified": snapshot.get("buying_power_verified")}
     portfolio["research_rules"] = {"stop_loss_warning": getattr(agent, "stop_loss_warning", -5), "take_profit_warning": getattr(agent, "take_profit_warning", 10)}
     portfolio["validation_scope"] = "Provided account snapshot only; currency and settlement buying power unverified"
     prepared = ResearchInput(run_id=run_id, as_of=datetime.now(timezone.utc), securities=securities,
                              evidence=evidence, portfolio=portfolio, signals=signals, language=context.report_language)
-    return prepared, details, snapshots
+    return prepared, snapshots
 
 
 def _preview(value):
     if isinstance(value, str):
-        return value if len(value) <= 1200 else value[:1200] + " [details available via read-only tool]"
+        return value if len(value) <= 1200 else value[:1200] + " [excerpt]"
     if isinstance(value, dict):
         return {k: _preview(v) for k, v in value.items()}
     if isinstance(value, list):

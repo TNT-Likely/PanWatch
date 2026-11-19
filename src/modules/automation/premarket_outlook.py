@@ -64,6 +64,8 @@ class PremarketOutlookAgent(SessionResearchAgent):
             include_events=True,
             events_days=7,
         )
+        if capture := getattr(context, "_research_capture", None):
+            capture({"signal_packs": packs, "us_indices": us_indices})
         quote_ok = 0
         technical_ok = 0
         news_total = 0

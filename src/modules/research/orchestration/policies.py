@@ -5,8 +5,17 @@ from pan_investment_research import ResearchPolicy
 
 
 PROFILES = {"daily_report": "postmarket", "premarket_outlook": "premarket", "intraday_monitor": "intraday"}
-DEFAULT_TEMPLATES = {"daily_report": "postmarket_deep", "premarket_outlook": "premarket_balanced", "intraday_monitor": "intraday_fast"}
+SESSION_TEMPLATES = {
+    "daily_report": ("postmarket_stable", "postmarket_deep"),
+    "premarket_outlook": ("premarket_stable", "premarket_balanced"),
+    "intraday_monitor": ("intraday_fast",),
+}
+DEFAULT_TEMPLATES = {agent: templates[0] for agent, templates in SESSION_TEMPLATES.items()}
+SESSION_TIMEOUTS = {"intraday_monitor": 60, "premarket_outlook": 180, "daily_report": 180}
+STABLE = {"specialists": ["technical", "events"], "debate": False, "max_feedback": 0}
 PRESETS = {
+    "premarket_stable": {**STABLE, "deadline_seconds": 480},
+    "postmarket_stable": STABLE,
     "intraday_fast": {"graph": "intraday_fast", "specialists": ["technical", "events"], "debate": False,
         "max_feedback": 0, "max_attempts": 6, "max_tools": 2, "concurrency": 2,
         "max_output_tokens": 16000, "max_total_tokens": 200000, "deadline_seconds": 120},
@@ -25,7 +34,7 @@ def template_for(config, agent_name):
         ):
             return "custom_research"
         return DEFAULT_TEMPLATES[agent_name]
-    if value not in {DEFAULT_TEMPLATES[agent_name], "custom_research"}:
+    if value not in (*SESSION_TEMPLATES[agent_name], "custom_research"):
         raise ValueError("template is unavailable for this session")
     return value
 
@@ -58,7 +67,7 @@ def templates_for(agent_name):
     if agent_name not in DEFAULT_TEMPLATES:
         raise ValueError("research graph is unavailable for this agent")
     options = []
-    for name in (DEFAULT_TEMPLATES[agent_name], "custom_research"):
+    for name in (*SESSION_TEMPLATES[agent_name], "custom_research"):
         _, policy = validate_config({"template": name}, agent_name)
         options.append({"id": name, "defaults": policy.model_dump(exclude={"profile", "graph"}),
             "graph": policy.graph, "allowed_specialists": ["technical", "events"] if policy.graph == "intraday_fast" else ["technical", "flow", "events"]})
