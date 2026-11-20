@@ -1429,6 +1429,40 @@ class AssistantArtifact(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class MobileInstallation(Base):
+    __tablename__ = "mobile_installations"
+
+    id = Column(Integer, primary_key=True)
+    instance_id = Column(String, nullable=False)
+
+
+class MobilePairing(Base):
+    __tablename__ = "mobile_pairings"
+
+    id = Column(String, primary_key=True)
+    origin = Column(String, nullable=False)
+    challenge_hash = Column(String, nullable=False)
+    claim_hash = Column(String, nullable=True)
+    verification_code = Column(String, nullable=True)
+    device_name = Column(String, nullable=True)
+    platform = Column(String, nullable=True)
+    status = Column(String, nullable=False)
+    expires_at = Column(Integer, nullable=False, index=True)
+
+
+class MobileDevice(Base):
+    __tablename__ = "mobile_devices"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    platform = Column(String, nullable=False)
+    token_hash = Column(String, nullable=False, unique=True)
+    scope = Column(String, nullable=False)
+    created_at = Column(Integer, nullable=False)
+    expires_at = Column(Integer, nullable=False)
+    revoked_at = Column(Integer, nullable=True)
+
+
 class PersonalAccessToken(Base):
     """个人访问令牌(PAT)—— MCP 端点专用的独立长期凭据。
 

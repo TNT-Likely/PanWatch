@@ -2243,6 +2243,44 @@ def _m140_research_run_leases(conn: Connection) -> None:
         _add_column_if_missing(conn, "research_runs", name, f"ALTER TABLE research_runs ADD COLUMN {name} {declaration}")
 
 
+def _m141_mobile_device_pairing(conn: Connection) -> None:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS mobile_installations (
+            id INTEGER NOT NULL PRIMARY KEY,
+            instance_id VARCHAR NOT NULL
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS mobile_pairings (
+            id VARCHAR NOT NULL PRIMARY KEY,
+            origin VARCHAR NOT NULL,
+            challenge_hash VARCHAR NOT NULL,
+            claim_hash VARCHAR,
+            verification_code VARCHAR,
+            device_name VARCHAR,
+            platform VARCHAR,
+            status VARCHAR NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+    """))
+    conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS ix_mobile_pairings_expires_at
+        ON mobile_pairings (expires_at)
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS mobile_devices (
+            id VARCHAR NOT NULL PRIMARY KEY,
+            name VARCHAR NOT NULL,
+            platform VARCHAR NOT NULL,
+            token_hash VARCHAR NOT NULL UNIQUE,
+            scope VARCHAR NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            revoked_at INTEGER
+        )
+    """))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2284,6 +2322,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(138, "investment_research_delivery", _m138_investment_research),
     Migration(139, "retire_session_legacy", _m139_retire_session_legacy),
     Migration(140, "research_run_leases", _m140_research_run_leases),
+    Migration(141, "mobile_device_pairing", _m141_mobile_device_pairing),
 )
 
 

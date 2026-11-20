@@ -42,7 +42,7 @@ def test_holdings_only_request_exchange_rates_for_held_markets(db, monkeypatch, 
     monkeypatch.setattr(accounts, "get_hkd_cny_rate", hkd)
     monkeypatch.setattr(accounts, "get_usd_cny_rate", usd)
     monkeypatch.setattr(accounts, "_fetch_quotes_for_stocks", lambda stocks: {
-        stock.symbol: {"current_price": 12} for stock in stocks
+        (stock.market, stock.symbol): {"current_price": 12} for stock in stocks
     })
 
     result = accounts._gather_holdings(db)
@@ -75,7 +75,7 @@ def test_market_quotes_run_concurrently_and_preserve_partial_results(monkeypatch
         finally:
             release.set()
         result = pending.result(timeout=3)
-    assert set(result) == {"CN", "US"}
+    assert set(result) == {("CN", "CN"), ("US", "US")}
 
 
 @pytest.fixture

@@ -5,6 +5,7 @@ import { fetchAPI, type AIService, type AIModel, type NotifyChannel } from '@pan
 import { useAvatar, saveAvatar, fileToAvatarDataUrl } from '@/hooks/use-avatar'
 import { buildTemplateImportFeedback, type TemplateImportSummary } from '@/lib/template-import-feedback'
 import PatSection from '@/components/PatSection'
+import MobileConnectionSection from '@/components/MobileConnectionSection'
 import { useGuidedTour } from '@/components/onboarding/GuidedTour'
 import { UserAvatar } from '@/components/UserAvatar'
 import { Input } from '@panwatch/base-ui/components/ui/input'
@@ -679,6 +680,7 @@ export default function SettingsPage() {
 
   // 按“重要性”排序：常用优先，低频靠后
   const jumpItems: Array<{ id: string; label: string; hint?: string }> = [
+    { id: 'sec-mobile', label: configT('configuration:mobile.title') },
     { id: 'sec-ai', label: configT('configuration:settingsPage.nav.ai'), hint: `${services.length} ${configT('configuration:settingsPage.hero.providers')} / ${allModels.length} ${configT('configuration:settingsPage.hero.models')}` },
     { id: 'sec-notify', label: configT('configuration:settingsPage.nav.notifications'), hint: `${enabledChannels.length}/${channels.length} ${configT('configuration:settingsPage.hero.channelsEnabled')}` },
     { id: 'sec-system', label: configT('configuration:settingsPage.nav.system'), hint: health?.timezone ? `TZ ${health.timezone}` : undefined },
@@ -1069,6 +1071,8 @@ export default function SettingsPage() {
             })}
           </div>
         </section>
+
+        <MobileConnectionSection />
 
         {/* MCP 访问令牌 */}
         <PatSection className="lg:col-span-7" />

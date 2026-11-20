@@ -36,6 +36,7 @@ from src.modules.market.api import (
     quotes,
     stocks,
 )
+from src.modules.mobile import api as mobile_api
 from src.modules.paper_trading.api import paper_trading
 from src.modules.portfolio.api import accounts, dashboard, history
 from src.modules.research.api import (
@@ -64,6 +65,16 @@ app.add_middleware(
 
 # 认证路由（无需登录）
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(
+    mobile_api.create_router(
+        get_current_user=get_current_user,
+        get_password_hash=auth.get_password_hash,
+        get_app_version=get_app_version,
+        get_portfolio_summary=lambda db: accounts.get_portfolio_summary(db=db),
+    ),
+    prefix="/api/mobile/v1",
+    tags=["mobile"],
+)
 # 市场指数（公共数据，无需登录）
 app.include_router(market.router, prefix="/api/market", tags=["market"])
 
