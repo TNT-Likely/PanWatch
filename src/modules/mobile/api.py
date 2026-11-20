@@ -5,18 +5,17 @@ import ipaddress
 import re
 import secrets
 import time
+from collections.abc import Callable
 from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
-from src.modules.administration.api.auth import get_current_user, get_password_hash, security
-from src.modules.administration.api.settings import get_app_version
 from src.modules.mobile.schemas import (
     Capabilities,
     DeviceGrant,
@@ -30,7 +29,6 @@ from src.modules.mobile.schemas import (
     PairingStatus,
     Portfolio,
 )
-from src.modules.portfolio.api.accounts import get_portfolio_summary
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import MobileDevice, MobileInstallation, MobilePairing
 from src.web.errors import api_error
@@ -43,20 +41,15 @@ _CONSOLE_PENDING = ("waiting_for_device", "waiting_for_approval", "approved")
 _NO_STORE = {"Cache-Control": "no-store"}
 
 DB = Annotated[Session, Depends(get_db)]
-Bearer = Annotated[HTTPAuthorizationCredentials | None, Depends(security)]
+Bearer = Annotated[HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False))]
 
 
 def _no_store(response: Response) -> None:
     response.headers.update(_NO_STORE)
 
 
-def _require_owner(user: Annotated[str | None, Depends(get_current_user)]) -> None:
-    if user is None:
-        raise api_error(403, "mobile_login_setup_required", "请先设置 PanWatch 登录密码。")
-
-
-router = APIRouter(dependencies=[Depends(_no_store)])
-owner = APIRouter(dependencies=[Depends(_require_owner)])
+phone = APIRouter()
+owner = APIRouter()
 
 
 def _digest(material: str) -> str:
@@ -116,11 +109,6 @@ def _phone_claim_hash(credentials: HTTPAuthorizationCredentials | None) -> str:
     return _digest(credentials.credentials)
 
 
-@router.get("/capabilities")
-def capabilities(db: DB) -> MobileResponse[Capabilities]:
-    return MobileResponse(data=Capabilities(service_version=get_app_version(), pairing=bool(get_password_hash(db))))
-
-
 @owner.post("/pairings", status_code=201)
 def start_pairing(body: PairingStart, request: Request, db: DB) -> MobileResponse[PairingQR]:
     origin = _https_origin(body.origin)
@@ -153,7 +141,7 @@ def read_web_pairing(pairing_id: UUID, db: DB) -> MobileResponse[PairingStatus]:
     return MobileResponse(data=_pairing_status(pairing))
 
 
-@router.post("/pairings/{pairing_id}/claim")
+@phone.post("/pairings/{pairing_id}/claim")
 def claim_pairing(pairing_id: UUID, body: PairingClaim, db: DB) -> MobileResponse[PairingStatus]:
     key = str(pairing_id)
     challenge_hash = _digest(body.challenge)
@@ -182,7 +170,7 @@ def claim_pairing(pairing_id: UUID, body: PairingClaim, db: DB) -> MobileRespons
     return MobileResponse(data=result)
 
 
-@router.get("/pairings/{pairing_id}/status")
+@phone.get("/pairings/{pairing_id}/status")
 def read_phone_pairing(pairing_id: UUID, credentials: Bearer, db: DB) -> MobileResponse[PairingStatus]:
     claim_hash = _phone_claim_hash(credentials)
     pairing = db.get(MobilePairing, str(pairing_id))
@@ -214,7 +202,7 @@ def decide_pairing(pairing_id: UUID, body: PairingDecision, db: DB) -> MobileRes
     return MobileResponse(data=result)
 
 
-@router.post("/pairings/{pairing_id}/exchange")
+@phone.post("/pairings/{pairing_id}/exchange")
 def exchange_pairing(pairing_id: UUID, credentials: Bearer, db: DB) -> MobileResponse[DeviceGrant]:
     claim_hash = _phone_claim_hash(credentials)
     key = str(pairing_id)
@@ -286,28 +274,48 @@ def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session
         raise api_error(401, "mobile_device_expired", "设备授权已过期，请重新扫码。")
 
 
-@router.get("/portfolio")
-def portfolio(credentials: Bearer, db: DB) -> MobileResponse[Portfolio]:
-    _verify_device(credentials, db)
-    summary = get_portfolio_summary(db=db)
-    holdings = [
-        Holding(
-            symbol=position["symbol"],
-            name=position["name"],
-            market=position["market"],
-            quantity=position["quantity"],
-            market_value=position["market_value"],
-            currency={"HK": "HKD", "US": "USD"}.get(position["market"], "CNY"),
-        )
-        for account in summary["accounts"] for position in account["positions"]
-    ]
-    covered = sum(holding.market_value is not None for holding in holdings)
-    valuation = "complete"
-    if covered < len(holdings):
-        valuation = "partial" if covered else "unavailable"
-    return MobileResponse(data=Portfolio(
-        total_assets=summary["total"]["total_assets"], valuation=valuation, holdings=holdings,
-    ))
+def create_router(
+    *,
+    get_current_user: Callable[..., str | None],
+    get_password_hash: Callable[[Session], str | None],
+    get_app_version: Callable[[], str],
+    get_portfolio_summary: Callable[[Session], dict],
+) -> APIRouter:
+    router = APIRouter(dependencies=[Depends(_no_store)])
 
+    def require_owner(user: Annotated[str | None, Depends(get_current_user)]) -> None:
+        if user is None:
+            raise api_error(403, "mobile_login_setup_required", "请先设置 PanWatch 登录密码。")
 
-router.include_router(owner)
+    @router.get("/capabilities")
+    def capabilities(db: DB) -> MobileResponse[Capabilities]:
+        return MobileResponse(data=Capabilities(
+            service_version=get_app_version(), pairing=bool(get_password_hash(db)),
+        ))
+
+    @router.get("/portfolio")
+    def portfolio(credentials: Bearer, db: DB) -> MobileResponse[Portfolio]:
+        _verify_device(credentials, db)
+        summary = get_portfolio_summary(db)
+        holdings = [
+            Holding(
+                symbol=position["symbol"],
+                name=position["name"],
+                market=position["market"],
+                quantity=position["quantity"],
+                market_value=position["market_value"],
+                currency={"HK": "HKD", "US": "USD"}.get(position["market"], "CNY"),
+            )
+            for account in summary["accounts"] for position in account["positions"]
+        ]
+        covered = sum(holding.market_value is not None for holding in holdings)
+        valuation = "complete"
+        if covered < len(holdings):
+            valuation = "partial" if covered else "unavailable"
+        return MobileResponse(data=Portfolio(
+            total_assets=summary["total"]["total_assets"], valuation=valuation, holdings=holdings,
+        ))
+
+    router.include_router(phone)
+    router.include_router(owner, dependencies=[Depends(require_owner)])
+    return router
