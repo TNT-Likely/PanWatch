@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.sqlite import insert
@@ -27,6 +29,8 @@ from src.modules.mobile.schemas import (
     PairingQR,
     PairingStart,
     PairingStatus,
+    PasswordLogin,
+    Platform,
     Portfolio,
 )
 from src.platform.persistence.database import get_db
@@ -50,6 +54,21 @@ def _no_store(response: Response) -> None:
 
 phone = APIRouter()
 owner = APIRouter()
+
+
+class PasswordLoginRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def without_credentials_in_validation_errors(request: Request):
+            try:
+                return await handler(request)
+            except RequestValidationError:
+                raise api_error(
+                    422, "mobile_login_invalid", "请检查连接地址、账号和密码。", headers=_NO_STORE,
+                ) from None
+
+        return without_credentials_in_validation_errors
 
 
 def _digest(material: str) -> str:
@@ -202,6 +221,26 @@ def decide_pairing(pairing_id: UUID, body: PairingDecision, db: DB) -> MobileRes
     return MobileResponse(data=result)
 
 
+def _issue_device(db: Session, name: str, platform: Platform, origin: str, now: int) -> DeviceGrant:
+    token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+    device_id = str(uuid4())
+    expires_at = now + _DEVICE_TTL
+    db.add(MobileDevice(
+        id=device_id, name=name, platform=platform,
+        token_hash=_digest(token), scope=_PORTFOLIO_SCOPE,
+        created_at=now, expires_at=expires_at,
+    ))
+    db.execute(
+        insert(MobileInstallation).values(id=1, instance_id=str(uuid4()))
+        .on_conflict_do_nothing(index_elements=["id"])
+    )
+    installation = db.get(MobileInstallation, 1)
+    return DeviceGrant(
+        instance_id=installation.instance_id, device_id=device_id, origin=origin,
+        access_token=token, expires_at=expires_at,
+    )
+
+
 @phone.post("/pairings/{pairing_id}/exchange")
 def exchange_pairing(pairing_id: UUID, credentials: Bearer, db: DB) -> MobileResponse[DeviceGrant]:
     claim_hash = _phone_claim_hash(credentials)
@@ -219,23 +258,7 @@ def exchange_pairing(pairing_id: UUID, credentials: Bearer, db: DB) -> MobileRes
     if redeemed.rowcount != 1:
         raise _pairing_closed()
     pairing = db.get(MobilePairing, key)
-    token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
-    device_id = str(uuid4())
-    expires_at = now + _DEVICE_TTL
-    db.add(MobileDevice(
-        id=device_id, name=pairing.device_name, platform=pairing.platform,
-        token_hash=_digest(token), scope=_PORTFOLIO_SCOPE,
-        created_at=now, expires_at=expires_at,
-    ))
-    db.execute(
-        insert(MobileInstallation).values(id=1, instance_id=str(uuid4()))
-        .on_conflict_do_nothing(index_elements=["id"])
-    )
-    installation = db.get(MobileInstallation, 1)
-    result = DeviceGrant(
-        instance_id=installation.instance_id, device_id=device_id, origin=pairing.origin,
-        access_token=token, expires_at=expires_at,
-    )
+    result = _issue_device(db, pairing.device_name, pairing.platform, pairing.origin, now)
     db.commit()
     return MobileResponse(data=result)
 
@@ -278,10 +301,13 @@ def create_router(
     *,
     get_current_user: Callable[..., str | None],
     get_password_hash: Callable[[Session], str | None],
+    get_stored_username: Callable[[Session], str | None],
+    verify_login_credentials: Callable[[Session, str, str], None],
     get_app_version: Callable[[], str],
     get_portfolio_summary: Callable[[Session], dict],
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(_no_store)])
+    password = APIRouter(route_class=PasswordLoginRoute)
 
     def require_owner(user: Annotated[str | None, Depends(get_current_user)]) -> None:
         if user is None:
@@ -289,9 +315,19 @@ def create_router(
 
     @router.get("/capabilities")
     def capabilities(db: DB) -> MobileResponse[Capabilities]:
+        pairing = bool(get_password_hash(db))
         return MobileResponse(data=Capabilities(
-            service_version=get_app_version(), pairing=bool(get_password_hash(db)),
+            service_version=get_app_version(), pairing=pairing,
+            password_login=pairing and bool(get_stored_username(db)),
         ))
+
+    @password.post("/devices/login", status_code=201)
+    def login_device(body: PasswordLogin, db: DB) -> MobileResponse[DeviceGrant]:
+        origin = _https_origin(body.origin)
+        verify_login_credentials(db, body.username, body.password.get_secret_value())
+        grant = _issue_device(db, body.device_name, body.platform, origin, _now())
+        db.commit()
+        return MobileResponse(data=grant)
 
     @router.get("/portfolio")
     def portfolio(credentials: Bearer, db: DB) -> MobileResponse[Portfolio]:
@@ -318,4 +354,5 @@ def create_router(
 
     router.include_router(phone)
     router.include_router(owner, dependencies=[Depends(require_owner)])
+    router.include_router(password)
     return router

@@ -81,7 +81,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
     client, sessions = instance
     assert client.get(f"{MOBILE}/capabilities").json()["data"] == {
         "service": "panwatch", "service_version": settings.get_app_version(),
-        "protocol_min": 1, "protocol_max": 1, "pairing": False, "portfolio_read": True,
+        "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -130,6 +130,50 @@ def test_only_the_approved_phone_can_exchange_once_and_revocation_is_immediate(i
     refused = client.get(f"{MOBILE}/portfolio", headers=device)
     assert refused.status_code == 401
     assert refused.json()["error_code"] == "mobile_device_revoked"
+
+
+def test_password_login_reuses_web_credentials_and_issues_only_a_revocable_device(instance):
+    client, sessions = instance
+    with sessions() as db:
+        auth.set_stored_username(db, "isolated-user")
+        auth.set_password_hash(db, auth.hash_password("test password with spaces!"))
+    assert client.get(f"{MOBILE}/capabilities").json()["data"]["password_login"] is True
+    credentials = {"username": "isolated-user", "password": "test password with spaces!"}
+    web = client.post("/api/auth/login", json=credentials).json()["data"]
+    request = {**credentials, "origin": ORIGIN, "device_name": "Manual Android", "platform": "android"}
+    refused = client.post(f"{MOBILE}/devices/login", json={**request, "password": "wrong password"})
+    assert refused.status_code == 401
+    assert refused.json()["error_code"] == "invalid_credentials"
+    assert client.get(f"{MOBILE}/devices", headers=_bearer(web["token"])).json()["data"] == []
+
+    response = client.post(f"{MOBILE}/devices/login", json=request)
+    assert response.status_code == 201
+    assert response.headers["Cache-Control"] == "no-store"
+    grant = response.json()["data"]
+    assert grant["origin"] == ORIGIN and grant["scope"] == "portfolio:read"
+    device = _bearer(grant["access_token"])
+    assert client.get(f"{MOBILE}/portfolio", headers=device).status_code == 200
+    assert client.get("/api/auth/me", headers=device).status_code == 401
+    assert client.get(f"{MOBILE}/portfolio", headers=_bearer(web["token"])).status_code == 401
+    items = client.get(f"{MOBILE}/devices", headers=_bearer(web["token"])).json()["data"]
+    assert items[0]["name"] == "Manual Android"
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=_bearer(web["token"])).status_code == 200
+    assert client.get(f"{MOBILE}/portfolio", headers=device).json()["error_code"] == "mobile_device_revoked"
+
+
+def test_password_login_validation_keeps_passwords_out_of_responses(instance):
+    client, _ = instance
+    body = {
+        "username": "isolated-user", "password": "a fixture password that must not be echoed",
+        "device_name": "Phone", "platform": "android",
+    }
+    response = client.post(f"{MOBILE}/devices/login", json=body)
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "mobile_login_invalid"
+    assert body["password"] not in response.text
+    response = client.post(f"{MOBILE}/devices/login", json={**body, "origin": ORIGIN})
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "auth_not_configured"
 
 
 @pytest.mark.parametrize("decision,terminal", [("deny", "denied"), ("cancel", "cancelled")])
