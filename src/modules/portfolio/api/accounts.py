@@ -464,7 +464,7 @@ def get_portfolio_summary(
             if not stock:
                 continue
 
-            quote = quotes.get(stock.symbol)
+            quote = quotes.get((stock.market, stock.symbol))
             current_price = quote["current_price"] if quote else None
             daily_fields = daily_quote_fields(stock.market, quote)
             change_pct = daily_fields["change_pct"]
@@ -520,8 +520,8 @@ def get_portfolio_summary(
                 "current_price": current_price,
                 "current_price_cny": round(current_price * rate, 2) if current_price else None,
                 "change_pct": change_pct,
-                "market_value": round(market_value, 2) if market_value else None,
-                "market_value_cny": round(market_value_cny, 2) if market_value_cny else None,
+                "market_value": round(market_value, 2) if market_value is not None else None,
+                "market_value_cny": round(market_value_cny, 2) if market_value_cny is not None else None,
                 "pnl": round(pnl, 2) if pnl else None,
                 "pnl_pct": round(pnl_pct, 2) if pnl_pct else None,
                 "daily_pnl": round(daily_pnl, 2) if daily_pnl is not None else None,
@@ -570,10 +570,10 @@ def get_portfolio_summary(
     # 构建 quotes 字典（用于前端股票列表显示）
     quotes_dict = {}
     if include_quotes:
-        for symbol, quote in quotes.items():
+        for (market, symbol), quote in quotes.items():
             quotes_dict[symbol] = {
                 "current_price": quote.get("current_price"),
-                **daily_quote_fields(quote.get("market", "CN"), quote),
+                **daily_quote_fields(market, quote),
             }
 
     return {
@@ -595,7 +595,7 @@ def get_portfolio_summary(
     }
 
 
-def _fetch_quotes_for_stocks(stocks: list[Stock]) -> dict:
+def _fetch_quotes_for_stocks(stocks: list[Stock]) -> dict[tuple[str, str], dict]:
     """获取股票列表的实时行情"""
     if not stocks:
         return {}
@@ -629,7 +629,11 @@ def _fetch_quotes_for_stocks(stocks: list[Stock]) -> dict:
     else:
         results = [fetch_batch(batch) for batch in batches]
 
-    return {item["symbol"]: item for items in results for item in items}
+    return {
+        (market, item["symbol"]): item
+        for (market, _), items in zip(batches, results, strict=True)
+        for item in items
+    }
 
 
 # 组合基准/归因结果缓存:重建全持仓 NAV 很贵(逐只拉 K 线),按持仓指纹缓存结果。
@@ -670,7 +674,7 @@ def _gather_holdings(db: Session) -> list[dict]:
             if not stock:
                 continue
             rate = hkd if stock.market == "HK" else usd if stock.market == "US" else 1.0
-            quote = quotes.get(stock.symbol)
+            quote = quotes.get((stock.market, stock.symbol))
             price = quote.get("current_price") if quote else None
             cost_cny = pos.cost_price * pos.quantity * rate
             mv_cny = (price * pos.quantity * rate) if price else cost_cny
