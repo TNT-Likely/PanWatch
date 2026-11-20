@@ -39,7 +39,7 @@
 
 <a href="https://modelflare.dev/sign-up?utm_source=github&utm_campaign=panwatch"><img src="./docs/sponsors/modelflare_banner_zh.png" alt="Modelflare" width="720"></a>
 
-感谢 **Modelflare** 赞助本项目！由美国 Havenbyte LLC 运营，满血稳定不掺水，低成本接入 GPT、Claude、Gemini、Grok 及 40+ 图片/视频模型。指定 OpenAI 分组提供 **65% / 75% / 85% 每日缓存命中率保障**；单笔充值 **US$20 解锁 GPT 0.015x**，**US$50 解锁 Claude 0.03x**。[**专属链接注册**](https://modelflare.dev/sign-up?utm_source=github&utm_campaign=panwatch)
+感谢 **Modelflare** 赞助本项目！满血稳定不掺水，低成本享受全球 SOTA 模型。站点由美国 LLC 主体 Havenbyte LLC 运营，支持 GPT、Claude、Gemini、Grok 等主流模型和常用兼容协议，还支持 40 多种图片和视频模型，支持大陆正规商务合作。指定 OpenAI 分组提供 **65% / 75% / 85% 每日缓存命中率保障**；单笔充值 **US$20 解锁 GPT 0.015x**，**US$50 解锁 Claude 0.03x**。[**专属链接注册**](https://modelflare.dev/sign-up?utm_source=github&utm_campaign=panwatch)
 
 <table>
   <tr>
