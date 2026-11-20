@@ -218,20 +218,21 @@ def setup_password(data: SetupRequest, db: Session = Depends(get_db)):
     return TokenResponse(token=token, expires_at=expires_at.isoformat())
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(data: LoginRequest, db: Session = Depends(get_db)):
-    """登录"""
+def verify_login_credentials(db: Session, username: str, password: str) -> None:
+    """Verify instance credentials without issuing a Web session."""
     stored_hash = get_password_hash(db)
     stored_username = get_stored_username(db)
     if not stored_hash or not stored_username:
         raise api_error(400, "auth_not_configured", "请先设置账号")
 
-    if data.username != stored_username:
+    if username != stored_username or hash_password(password) != stored_hash:
         raise api_error(401, "invalid_credentials", "用户名或密码错误")
 
-    if hash_password(data.password) != stored_hash:
-        raise api_error(401, "invalid_credentials", "用户名或密码错误")
 
+@router.post("/login", response_model=TokenResponse)
+def login(data: LoginRequest, db: Session = Depends(get_db)):
+    """登录"""
+    verify_login_credentials(db, data.username, data.password)
     token, expires_at = create_token()
     return TokenResponse(token=token, expires_at=expires_at.isoformat())
 

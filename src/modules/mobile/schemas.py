@@ -1,6 +1,6 @@
 from typing import Annotated, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, SecretStr, StringConstraints
 
 Platform = Literal["ios", "android"]
 PairingState = Literal[
@@ -19,11 +19,19 @@ class Capabilities(BaseModel):
     protocol_min: Literal[1] = 1
     protocol_max: Literal[1] = 1
     pairing: bool
+    password_login: bool
     portfolio_read: bool = True
 
 
 class PairingStart(BaseModel):
     origin: str = Field(max_length=300)
+
+
+class PasswordLogin(PairingStart):
+    username: str = Field(min_length=1)
+    password: SecretStr = Field(min_length=1)
+    device_name: DeviceName
+    platform: Platform
 
 
 class PairingQR(BaseModel):
