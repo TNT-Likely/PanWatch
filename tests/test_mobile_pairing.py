@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
 from src.bootstrap.application import app
-from src.modules.administration.api import auth
+from src.modules.administration.api import auth, settings
 from src.modules.mobile import api as mobile
 from src.modules.portfolio.api import accounts
 from src.platform.persistence.database import Base, get_db
@@ -80,7 +80,7 @@ def _approve(client, owner, root, qr):
 def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
     client, sessions = instance
     assert client.get(f"{MOBILE}/capabilities").json()["data"] == {
-        "service": "panwatch", "service_version": mobile.get_app_version(),
+        "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
