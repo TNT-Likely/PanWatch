@@ -10,7 +10,7 @@ from src.modules.administration.api import auth, settings
 from src.modules.mobile import api as mobile
 from src.modules.portfolio.api import accounts
 from src.platform.persistence.database import Base, get_db
-from src.platform.persistence.migrations import _m141_mobile_device_pairing
+from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal
 from src.platform.persistence.models import Account, MobileDevice, MobilePairing, Position, Stock
 
 MOBILE = "/api/mobile/v1"
@@ -53,24 +53,29 @@ def _start(client, owner):
     return response.json()["data"]
 
 
-def _claim(client, qr, claim_key=PHONE_KEY):
-    return client.post(f"{MOBILE}/pairings/{qr['pairing_id']}/claim", json={
+def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False):
+    body = {
         "challenge": qr["challenge"],
         "claim_key": claim_key,
         "device_name": "Test iPhone",
         "platform": "ios",
-    })
+    }
+    if renewable:
+        body["renewable"] = True
+    return client.post(f"{MOBILE}/pairings/{qr['pairing_id']}/claim", json=body)
 
 
 def _exchange(client, root, claim_key=PHONE_KEY):
     return client.post(f"{root}/exchange", headers=_bearer(claim_key))
 
 
-def _approve(client, owner, root, qr):
-    response = _claim(client, qr)
+def _approve(client, owner, root, qr, *, renewable=False):
+    response = _claim(client, qr, renewable=renewable)
     assert response.status_code == 200, response.text
     code = response.json()["data"]["verification_code"]
-    assert client.get(root, headers=owner).json()["data"]["verification_code"] == code
+    review = client.get(root, headers=owner).json()["data"]
+    assert review["verification_code"] == code
+    assert review["renewable"] is renewable
     response = client.post(f"{root}/decision", headers=owner, json={
         "decision": "approve", "verification_code": code,
     })
@@ -82,6 +87,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
     assert client.get(f"{MOBILE}/capabilities").json()["data"] == {
         "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
+        "session_refresh": True, "watchlist_read": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -104,6 +110,8 @@ def test_only_the_approved_phone_can_exchange_once_and_revocation_is_immediate(i
     root = f"{MOBILE}/pairings/{qr['pairing_id']}"
     assert _exchange(client, root).status_code == 409
     _approve(client, owner, root, qr)
+    replayed_claim = _claim(client, qr, renewable=True).json()["data"]
+    assert replayed_claim["status"] == "approved" and not replayed_claim["renewable"]
     assert _claim(client, qr, "2" * 64).status_code == 409
     assert _exchange(client, root, "2" * 64).status_code == 409
     assert client.get(f"{root}/status", headers=owner).status_code == 404
@@ -112,6 +120,7 @@ def test_only_the_approved_phone_can_exchange_once_and_revocation_is_immediate(i
     assert sorted(response.status_code for response in responses) == [200, 409]
     grant = next(response.json()["data"] for response in responses if response.status_code == 200)
     assert grant["scope"] == "portfolio:read"
+    assert grant["refresh_token"] is None and not grant["watchlist_read"]
     assert grant["origin"] == ORIGIN
     with sessions() as db:
         assert len(db.scalars(select(MobileDevice)).all()) == 1
@@ -123,6 +132,7 @@ def test_only_the_approved_phone_can_exchange_once_and_revocation_is_immediate(i
     device = _bearer(grant["access_token"])
     assert client.get(f"{MOBILE}/portfolio", headers=owner).status_code == 401
     assert client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]["holdings"] == []
+    assert client.get(f"{MOBILE}/symbols/watchlist", headers=device).status_code == 403
     assert client.get("/api/accounts", headers=device).status_code == 401
     assert client.post("/api/accounts", headers=device, json={"name": "Forbidden"}).status_code == 401
     assert client.get(f"{MOBILE}/devices", headers=device).status_code == 401
@@ -207,7 +217,7 @@ def test_a_separate_instance_cannot_accept_a_pairing_or_device_grant(instance, t
     owner = _owner(sessions)
     qr = _start(client, owner)
     root = f"{MOBILE}/pairings/{qr['pairing_id']}"
-    _approve(client, owner, root, qr)
+    _approve(client, owner, root, qr, renewable=True)
     grant = _exchange(client, root).json()["data"]
 
     other = create_engine(f"sqlite:///{tmp_path / 'other.db'}")
@@ -225,6 +235,8 @@ def test_a_separate_instance_cannot_accept_a_pairing_or_device_grant(instance, t
         response = client.get(f"{MOBILE}/portfolio", headers=_bearer(grant["access_token"]))
         assert response.status_code == 401
         assert response.json()["error_code"] == "mobile_device_invalid"
+        assert _renew(client, grant["refresh_token"], PHONE_KEY).status_code == 401
+        assert client.get(f"{MOBILE}/symbols/watchlist", headers=_bearer(grant["access_token"])).status_code == 401
     finally:
         other.dispose()
 
@@ -272,6 +284,87 @@ def test_read_only_portfolio_reports_partial_valuation_and_refreshes_real_positi
     assert client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]["total_assets"] == 80
 
 
+def _renewable_grant(client, sessions):
+    owner = _owner(sessions)
+    qr = _start(client, owner)
+    root = f"{MOBILE}/pairings/{qr['pairing_id']}"
+    _approve(client, owner, root, qr, renewable=True)
+    return owner, _exchange(client, root).json()["data"]
+
+
+def _renew(client, token, key):
+    return client.post(f"{MOBILE}/session/refresh", headers={**_bearer(token), "Idempotency-Key": key})
+
+
+def test_device_renewal_replays_only_the_issued_grant_after_a_lost_response(instance, monkeypatch):
+    client, sessions = instance
+    owner, grant = _renewable_grant(client, sessions)
+    now = grant["expires_at"] + 1
+    monkeypatch.setattr(mobile, "_now", lambda: now)
+    assert client.get(f"{MOBILE}/portfolio", headers=_bearer(grant["access_token"])).json()["error_code"] == "mobile_device_expired"
+    assert _renew(client, grant["access_token"], PHONE_KEY).status_code == 401
+    assert _renew(client, grant["refresh_token"], "bad-key").status_code == 400
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        replies = list(executor.map(lambda _: _renew(client, grant["refresh_token"], PHONE_KEY), range(2)))
+    assert [r.status_code for r in replies] == [200, 200]
+    assert replies[0].headers["Cache-Control"] == "no-store"
+    next_grant = replies[0].json()["data"]
+    assert next_grant == replies[1].json()["data"]
+    for field in ("instance_id", "device_id", "origin"):
+        assert next_grant[field] == grant[field]
+    assert next_grant["access_token"] != grant["access_token"]
+    assert next_grant["refresh_token"] != grant["refresh_token"]
+    assert client.get(f"{MOBILE}/portfolio", headers=_bearer(next_grant["refresh_token"])).status_code == 401
+    assert client.get(f"{MOBILE}/portfolio", headers=_bearer(next_grant["access_token"])).status_code == 200
+    assert _renew(client, grant["refresh_token"], "2" * 64).status_code == 401
+    with sessions() as db:
+        device = db.get(MobileDevice, grant["device_id"])
+        assert device.refresh_token_hash == mobile._digest(next_grant["refresh_token"])
+        assert device.refresh_request_hash == mobile._digest(PHONE_KEY)
+
+    now += mobile._REPLAY_TTL
+    assert _renew(client, grant["refresh_token"], PHONE_KEY).status_code == 401
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert _renew(client, next_grant["refresh_token"], "2" * 64).json()["error_code"] == "mobile_device_revoked"
+
+
+def test_different_renewal_requests_use_the_credential_only_once(instance):
+    client, sessions = instance
+    _, grant = _renewable_grant(client, sessions)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        replies = list(executor.map(lambda nonce: _renew(client, grant["refresh_token"], nonce), (PHONE_KEY, "2" * 64)))
+    assert sorted(r.status_code for r in replies) == [200, 401]
+    assert client.get(f"{MOBILE}/portfolio", headers=_bearer(grant["access_token"])).status_code == 401
+
+
+def test_password_grant_reads_watchlist_in_web_order_without_account_fields(instance):
+    client, sessions = instance
+    with sessions() as db:
+        auth.set_stored_username(db, "isolated-user")
+        auth.set_password_hash(db, auth.hash_password("isolated-password"))
+        db.add_all([
+            Stock(symbol="SAME", market="CN", name="China fixture", sort_order=2),
+            Stock(symbol="SAME", market="US", name="US fixture", sort_order=1),
+        ])
+        db.commit()
+    response = client.post(f"{MOBILE}/devices/login", json={
+        "username": "isolated-user", "password": "isolated-password",
+        "origin": ORIGIN, "device_name": "Manual Android", "platform": "android", "renewable": True,
+    })
+    assert response.status_code == 201
+    grant = response.json()["data"]
+    assert grant["refresh_token"] and grant["watchlist_read"]
+    path = f"{MOBILE}/symbols/watchlist"
+    device = _bearer(grant["access_token"])
+    assert client.get(path, headers=device).json()["data"] == [
+        {"symbol": "SAME", "market": "US", "name": "US fixture"},
+        {"symbol": "SAME", "market": "CN", "name": "China fixture"},
+    ]
+    assert client.get("/api/stocks", headers=device).status_code == 401
+    assert client.post(path, headers=device, json={"symbol": "NEW", "market": "US"}).status_code == 405
+
+
 def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'older.db'}")
     with engine.begin() as conn:
@@ -282,4 +375,13 @@ def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
         assert conn.scalar(text("SELECT name FROM accounts WHERE id = 1")) == "Legacy holding account"
         for table in ("mobile_installations", "mobile_pairings", "mobile_devices"):
             assert conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0
+        conn.execute(text("""
+            INSERT INTO mobile_devices (id, name, platform, token_hash, scope, created_at, expires_at)
+            VALUES ('device', 'Old device', 'ios', 'legacy-fixture-hash', 'portfolio:read', 1, 604801)
+        """))
+        _m142_mobile_device_renewal(conn)
+        _m142_mobile_device_renewal(conn)
+        legacy = conn.execute(text("SELECT scope, expires_at, refresh_token_hash FROM mobile_devices")).one()
+        assert tuple(legacy) == ("portfolio:read", 604801, None)
+        assert conn.scalar(text("SELECT name FROM accounts WHERE id = 1")) == "Legacy holding account"
     engine.dispose()

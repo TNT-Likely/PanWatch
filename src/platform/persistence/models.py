@@ -1448,6 +1448,7 @@ class MobilePairing(Base):
     platform = Column(String, nullable=True)
     status = Column(String, nullable=False)
     expires_at = Column(Integer, nullable=False, index=True)
+    renewable = Column(Boolean, nullable=False, default=False, server_default="0")
 
 
 class MobileDevice(Base):
@@ -1461,6 +1462,12 @@ class MobileDevice(Base):
     created_at = Column(Integer, nullable=False)
     expires_at = Column(Integer, nullable=False)
     revoked_at = Column(Integer, nullable=True)
+    origin = Column(String, nullable=True)
+    access_expires_at = Column(Integer, nullable=True)
+    refresh_token_hash = Column(String, nullable=True, unique=True, index=True)
+    previous_refresh_hash = Column(String, nullable=True, index=True)
+    refresh_request_hash = Column(String, nullable=True)
+    refresh_replay_until = Column(Integer, nullable=True)
 
 
 class PersonalAccessToken(Base):

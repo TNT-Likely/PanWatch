@@ -24,6 +24,7 @@ type PairingStatus = {
   device_name: string | null
   platform: 'ios' | 'android' | null
   verification_code: string | null
+  renewable?: boolean
 }
 type Device = {
   id: string
@@ -193,6 +194,9 @@ export default function MobileConnectionSection() {
           {state === 'waiting_for_approval' && review && (
             <div className="space-y-2 rounded-lg border border-border p-3">
               <p className="break-words text-sm font-medium">{review.device_name}</p>
+              <p className="text-xs text-muted-foreground">
+                {t(review.renewable ? 'mobile.renewableAccess' : 'mobile.portfolioAccess')}
+              </p>
               <p className="font-mono text-lg tracking-widest">{review.verification_code}</p>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={() => void decide('approve')}>{t('mobile.approve')}</Button>
