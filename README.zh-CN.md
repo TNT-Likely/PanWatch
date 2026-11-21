@@ -163,6 +163,14 @@ docker compose up -d
 2. 使用 Docker Compose 时，将现有服务的镜像改为 `sunxiao0721/panwatch:0.21.0`，再执行 `docker compose pull panwatch` 和 `docker compose up -d panwatch`。使用 `docker run` 时，拉取该镜像，用原有环境变量、端口及数据挂载重建容器。
 3. 登录 Web 核对持仓。在 App 重新检测原有 HTTPS 地址并用原账号登录，或在 Web 打开 **设置 → 连接手机**，生成新的二维码并批准这台手机。
 
+### Android 封闭测试
+
+测试覆盖 Google Play 为该轨道提供的全部地区。使用测试名单中的 Google 账号登录，[加入 Android 封闭测试](https://play.google.com/apps/testing/com.tntlikely.panwatch)，然后从 Google Play 安装 PanWatch。
+
+升级服务后，在 Web 打开 **设置 → 连接手机**。用 PanWatch 扫描新生成的二维码，在 Web 批准连接，再核对 App 中的持仓。
+
+[反馈移动版测试问题](https://github.com/TNT-Likely/PanWatch/issues/new?template=mobile_beta_feedback.yml)时，请填写平台、App 和服务版本、复现步骤及错误提示。提交前请移除二维码、服务地址、凭据和真实持仓。
+
 ## 详细说明
 
 <details>

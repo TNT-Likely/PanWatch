@@ -167,6 +167,14 @@ The native app needs a compatible PanWatch server reachable over HTTPS. The firs
 2. For Docker Compose, set the existing service image to `sunxiao0721/panwatch:0.21.0`, then run `docker compose pull panwatch` and `docker compose up -d panwatch`. For `docker run`, pull that image and recreate the container with your existing environment, ports, and data mount.
 3. Sign in on the web and confirm your holdings are present. In the app, recheck the same HTTPS address and sign in with your existing server credentials, or open **Settings → Connect a phone** on the web to create and approve a new QR connection.
 
+### Android closed testing
+
+The closed test covers all regions Google Play offers for this track. Sign in to Google Play with the Google account on the tester list, [join the Android closed test](https://play.google.com/apps/testing/com.tntlikely.panwatch), and install PanWatch from Google Play.
+
+On your upgraded server, open **Settings → Connect a phone**. Scan the new QR code with PanWatch, approve the connection on the web, and check that your holdings match.
+
+[Report a mobile beta issue](https://github.com/TNT-Likely/PanWatch/issues/new?template=mobile_beta_feedback.yml) with the platform, app and server versions, steps, and any error message. Remove QR codes, server addresses, credentials, and real holdings before posting.
+
 ## Reference
 
 <details>
