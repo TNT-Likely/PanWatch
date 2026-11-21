@@ -1,6 +1,8 @@
-"""I0 device pairing and the read-only mobile portfolio."""
+"""Device pairing, session renewal and read-only mobile data."""
 
+import base64
 import hashlib
+import hmac
 import ipaddress
 import re
 import secrets
@@ -10,11 +12,11 @@ from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
@@ -32,15 +34,21 @@ from src.modules.mobile.schemas import (
     PasswordLogin,
     Platform,
     Portfolio,
+    WatchlistSymbol,
 )
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import MobileDevice, MobileInstallation, MobilePairing
+from src.platform.persistence.models import MobileDevice, MobileInstallation, MobilePairing, Stock
 from src.web.errors import api_error
 
 _PAIRING_TTL = 180
 _DEVICE_TTL = 7 * 24 * 60 * 60
+_ACCESS_TTL = 15 * 60
+_REFRESH_TTL = 30 * 24 * 60 * 60
+_REPLAY_TTL = 120
 _PORTFOLIO_SCOPE = "portfolio:read"
+_WATCHLIST_SCOPE = "watchlist:read"
 _TOKEN_PREFIX = "pwmob_"
+_REFRESH_PREFIX = "pwmor_"
 _CONSOLE_PENDING = ("waiting_for_device", "waiting_for_approval", "approved")
 _NO_STORE = {"Cache-Control": "no-store"}
 
@@ -119,6 +127,7 @@ def _pairing_status(pairing: MobilePairing) -> PairingStatus:
         device_name=pairing.device_name,
         platform=pairing.platform,
         verification_code=pairing.verification_code,
+        renewable=pairing.renewable,
     )
 
 
@@ -177,6 +186,7 @@ def claim_pairing(pairing_id: UUID, body: PairingClaim, db: DB) -> MobileRespons
             verification_code=f"{secrets.randbelow(1_000_000):06d}",
             device_name=body.device_name,
             platform=body.platform,
+            renewable=body.renewable,
         )
     )
     pairing = db.get(MobilePairing, key)
@@ -221,24 +231,32 @@ def decide_pairing(pairing_id: UUID, body: PairingDecision, db: DB) -> MobileRes
     return MobileResponse(data=result)
 
 
-def _issue_device(db: Session, name: str, platform: Platform, origin: str, now: int) -> DeviceGrant:
+def _device_grant(db: Session, device: MobileDevice, token: str, refresh_token: str | None) -> DeviceGrant:
+    installation = db.get(MobileInstallation, 1)
+    return DeviceGrant(
+        instance_id=installation.instance_id, device_id=device.id, origin=device.origin,
+        access_token=token, expires_at=device.access_expires_at or device.expires_at,
+        refresh_token=refresh_token, refresh_expires_at=device.expires_at if refresh_token else None,
+        watchlist_read=_WATCHLIST_SCOPE in device.scope.split(),
+    )
+
+
+def _issue_device(db: Session, name: str, platform: Platform, origin: str, now: int, *, renewable: bool) -> DeviceGrant:
     token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
-    device_id = str(uuid4())
-    expires_at = now + _DEVICE_TTL
-    db.add(MobileDevice(
-        id=device_id, name=name, platform=platform,
-        token_hash=_digest(token), scope=_PORTFOLIO_SCOPE,
-        created_at=now, expires_at=expires_at,
-    ))
+    refresh_token = f"{_REFRESH_PREFIX}{secrets.token_urlsafe(32)}" if renewable else None
+    device = MobileDevice(
+        id=str(uuid4()), name=name, platform=platform, origin=origin,
+        token_hash=_digest(token), scope=f"{_PORTFOLIO_SCOPE} {_WATCHLIST_SCOPE}" if renewable else _PORTFOLIO_SCOPE,
+        created_at=now, expires_at=now + (_REFRESH_TTL if renewable else _DEVICE_TTL),
+        access_expires_at=now + _ACCESS_TTL if renewable else None,
+        refresh_token_hash=_digest(refresh_token) if refresh_token else None,
+    )
+    db.add(device)
     db.execute(
         insert(MobileInstallation).values(id=1, instance_id=str(uuid4()))
         .on_conflict_do_nothing(index_elements=["id"])
     )
-    installation = db.get(MobileInstallation, 1)
-    return DeviceGrant(
-        instance_id=installation.instance_id, device_id=device_id, origin=origin,
-        access_token=token, expires_at=expires_at,
-    )
+    return _device_grant(db, device, token, refresh_token)
 
 
 @phone.post("/pairings/{pairing_id}/exchange")
@@ -258,7 +276,7 @@ def exchange_pairing(pairing_id: UUID, credentials: Bearer, db: DB) -> MobileRes
     if redeemed.rowcount != 1:
         raise _pairing_closed()
     pairing = db.get(MobilePairing, key)
-    result = _issue_device(db, pairing.device_name, pairing.platform, pairing.origin, now)
+    result = _issue_device(db, pairing.device_name, pairing.platform, pairing.origin, now, renewable=pairing.renewable)
     db.commit()
     return MobileResponse(data=result)
 
@@ -284,17 +302,88 @@ def revoke_device(device_id: UUID, db: DB) -> MobileResponse[DeviceSummary]:
     return MobileResponse(data=result)
 
 
-def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session) -> None:
+def _invalid_device():
+    return api_error(401, "mobile_device_invalid", "请重新连接手机。", headers=_NO_STORE)
+
+
+def _expired_device():
+    return api_error(401, "mobile_device_expired", "设备授权已过期，请重新连接手机。", headers=_NO_STORE)
+
+
+def _require_active_device(device: MobileDevice | None, now: int) -> MobileDevice:
+    if device is None:
+        raise _invalid_device()
+    if device.revoked_at is not None:
+        raise api_error(401, "mobile_device_revoked", "设备授权已撤销，请重新连接手机。", headers=_NO_STORE)
+    if device.expires_at <= now:
+        raise _expired_device()
+    return device
+
+
+def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session, scope: str) -> None:
     token = credentials.credentials if credentials else ""
     if not re.fullmatch(r"pwmob_[A-Za-z0-9_-]{43}", token):
-        raise api_error(401, "mobile_device_invalid", "请重新连接手机。")
-    device = db.scalar(select(MobileDevice).where(MobileDevice.token_hash == _digest(token)))
-    if device is None or device.scope != _PORTFOLIO_SCOPE:
-        raise api_error(401, "mobile_device_invalid", "请重新连接手机。")
-    if device.revoked_at is not None:
-        raise api_error(401, "mobile_device_revoked", "设备授权已撤销，请重新扫码。")
-    if device.expires_at <= _now():
-        raise api_error(401, "mobile_device_expired", "设备授权已过期，请重新扫码。")
+        raise _invalid_device()
+    now = _now()
+    device = _require_active_device(db.scalar(select(MobileDevice).where(MobileDevice.token_hash == _digest(token))), now)
+    if device.access_expires_at is not None and device.access_expires_at <= now:
+        raise _expired_device()
+    if scope not in device.scope.split():
+        raise api_error(403, "mobile_scope_required", "请重新连接以授权此功能。", headers=_NO_STORE)
+
+
+def _rotated_token(old_token: str, request_key: str, prefix: str) -> str:
+    # A retry can recompute the issued secrets without retaining plaintext in the database.
+    digest = hmac.digest(old_token.encode(), f"panwatch/mobile/v1/{prefix}/{request_key}".encode(), "sha256")
+    return prefix + base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
+@phone.post("/session/refresh")
+def refresh_session(
+    credentials: Bearer, db: DB,
+    request_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> MobileResponse[DeviceGrant]:
+    current_token = credentials.credentials if credentials else ""
+    if not re.fullmatch(r"pwmor_[A-Za-z0-9_-]{43}", current_token):
+        raise _invalid_device()
+    if not request_key or not re.fullmatch(r"[0-9a-f]{64}", request_key):
+        raise api_error(400, "mobile_refresh_key_invalid", "缺少有效的设备续期请求标识。", headers=_NO_STORE)
+
+    now = _now()
+    current_hash = _digest(current_token)
+    request_hash = _digest(request_key)
+    token = _rotated_token(current_token, request_key, _TOKEN_PREFIX)
+    refresh_token = _rotated_token(current_token, request_key, _REFRESH_PREFIX)
+    token_hash = _digest(token)
+    refresh_hash = _digest(refresh_token)
+    device = db.scalar(
+        update(MobileDevice).where(
+            MobileDevice.refresh_token_hash == current_hash,
+            MobileDevice.revoked_at.is_(None),
+            MobileDevice.expires_at > now,
+        ).values(
+            token_hash=token_hash, refresh_token_hash=refresh_hash,
+            access_expires_at=now + _ACCESS_TTL, expires_at=now + _REFRESH_TTL,
+            previous_refresh_hash=current_hash, refresh_request_hash=request_hash,
+            refresh_replay_until=now + _REPLAY_TTL,
+        ).returning(MobileDevice)
+    )
+    if device is None:
+        device = _require_active_device(db.scalar(select(MobileDevice).where(or_(
+            MobileDevice.refresh_token_hash == current_hash,
+            MobileDevice.previous_refresh_hash == current_hash,
+        ))), now)
+        if (
+            device.previous_refresh_hash != current_hash
+            or device.refresh_request_hash != request_hash
+            or (device.refresh_replay_until or 0) <= now
+            or device.token_hash != token_hash
+            or device.refresh_token_hash != refresh_hash
+        ):
+            raise _invalid_device()
+    result = _device_grant(db, device, token, refresh_token)
+    db.commit()
+    return MobileResponse(data=result)
 
 
 def create_router(
@@ -325,13 +414,13 @@ def create_router(
     def login_device(body: PasswordLogin, db: DB) -> MobileResponse[DeviceGrant]:
         origin = _https_origin(body.origin)
         verify_login_credentials(db, body.username, body.password.get_secret_value())
-        grant = _issue_device(db, body.device_name, body.platform, origin, _now())
+        grant = _issue_device(db, body.device_name, body.platform, origin, _now(), renewable=body.renewable)
         db.commit()
         return MobileResponse(data=grant)
 
     @router.get("/portfolio")
     def portfolio(credentials: Bearer, db: DB) -> MobileResponse[Portfolio]:
-        _verify_device(credentials, db)
+        _verify_device(credentials, db, _PORTFOLIO_SCOPE)
         summary = get_portfolio_summary(db)
         holdings = [
             Holding(
@@ -351,6 +440,12 @@ def create_router(
         return MobileResponse(data=Portfolio(
             total_assets=summary["total"]["total_assets"], valuation=valuation, holdings=holdings,
         ))
+
+    @router.get("/symbols/watchlist")
+    def watchlist(credentials: Bearer, db: DB) -> MobileResponse[list[WatchlistSymbol]]:
+        _verify_device(credentials, db, _WATCHLIST_SCOPE)
+        rows = db.execute(select(Stock.symbol, Stock.name, Stock.market).order_by(Stock.sort_order, Stock.id))
+        return MobileResponse(data=[WatchlistSymbol(symbol=symbol, name=name, market=market) for symbol, name, market in rows])
 
     router.include_router(phone)
     router.include_router(owner, dependencies=[Depends(require_owner)])

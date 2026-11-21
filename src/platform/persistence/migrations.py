@@ -2281,6 +2281,30 @@ def _m141_mobile_device_pairing(conn: Connection) -> None:
     """))
 
 
+def _m142_mobile_device_renewal(conn: Connection) -> None:
+    _add_column_if_missing(
+        conn, "mobile_pairings", "renewable",
+        "ALTER TABLE mobile_pairings ADD COLUMN renewable BOOLEAN NOT NULL DEFAULT 0",
+    )
+    for name, declaration in (
+        ("origin", "VARCHAR"),
+        ("access_expires_at", "INTEGER"),
+        ("refresh_token_hash", "VARCHAR"),
+        ("previous_refresh_hash", "VARCHAR"),
+        ("refresh_request_hash", "VARCHAR"),
+        ("refresh_replay_until", "INTEGER"),
+    ):
+        _add_column_if_missing(conn, "mobile_devices", name, f"ALTER TABLE mobile_devices ADD COLUMN {name} {declaration}")
+    conn.execute(text("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_mobile_devices_refresh_token_hash
+        ON mobile_devices (refresh_token_hash)
+    """))
+    conn.execute(text("""
+        CREATE INDEX IF NOT EXISTS ix_mobile_devices_previous_refresh_hash
+        ON mobile_devices (previous_refresh_hash)
+    """))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2323,6 +2347,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(139, "retire_session_legacy", _m139_retire_session_legacy),
     Migration(140, "research_run_leases", _m140_research_run_leases),
     Migration(141, "mobile_device_pairing", _m141_mobile_device_pairing),
+    Migration(142, "mobile_device_renewal", _m142_mobile_device_renewal),
 )
 
 

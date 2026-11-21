@@ -139,6 +139,8 @@ export const configuration = {
     connected: 'Connected', revoked: 'Revoked', expired: 'Expired',
     revoke: 'Revoke', revokeConfirm: 'Revoke read-only access for {{name}}?',
     pairingDescription: 'Scan with the PanWatch app and compare the verification code on both screens.',
+    portfolioAccess: 'Read holdings on this instance.',
+    renewableAccess: 'Read holdings and the watchlist on this instance. The connection renews automatically.',
     waiting_for_device: 'Waiting for your phone to scan.',
     waiting_for_approval: 'Check the phone and verification code before approving read-only access.',
     approved: 'Approved. Leave this open while your phone connects.',

@@ -21,6 +21,8 @@ class Capabilities(BaseModel):
     pairing: bool
     password_login: bool
     portfolio_read: bool = True
+    session_refresh: bool = True
+    watchlist_read: bool = True
 
 
 class PairingStart(BaseModel):
@@ -32,6 +34,7 @@ class PasswordLogin(PairingStart):
     password: SecretStr = Field(min_length=1)
     device_name: DeviceName
     platform: Platform
+    renewable: bool = False
 
 
 class PairingQR(BaseModel):
@@ -48,6 +51,7 @@ class PairingClaim(BaseModel):
     claim_key: ClaimKey
     device_name: DeviceName
     platform: Platform
+    renewable: bool = False
 
 
 class PairingDecision(BaseModel):
@@ -61,6 +65,7 @@ class PairingStatus(BaseModel):
     device_name: str | None
     platform: Platform | None
     verification_code: VerificationCode | None
+    renewable: bool = False
 
 
 class DeviceGrant(BaseModel):
@@ -70,6 +75,9 @@ class DeviceGrant(BaseModel):
     access_token: str
     scope: Literal["portfolio:read"] = "portfolio:read"
     expires_at: int
+    refresh_token: str | None = None
+    refresh_expires_at: int | None = None
+    watchlist_read: bool = False
 
 
 class DeviceSummary(BaseModel):
@@ -95,6 +103,12 @@ class Portfolio(BaseModel):
     currency: Literal["CNY"] = "CNY"
     valuation: Literal["complete", "partial", "unavailable"]
     holdings: list[Holding]
+
+
+class WatchlistSymbol(BaseModel):
+    symbol: str
+    name: str
+    market: str
 
 
 T = TypeVar("T")

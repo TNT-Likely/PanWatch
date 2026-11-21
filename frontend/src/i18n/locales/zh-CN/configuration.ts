@@ -136,6 +136,8 @@ export const configuration = {
     connected: '已连接', revoked: '已撤销', expired: '已过期',
     revoke: '撤销', revokeConfirm: '撤销 {{name}} 的持仓只读权限？',
     pairingDescription: '用 PanWatch App 扫码，并核对手机和网页显示的校验码。',
+    portfolioAccess: '只读当前实例的持仓。',
+    renewableAccess: '只读当前实例的持仓和自选，连接会自动续期。',
     waiting_for_device: '等待手机扫码。',
     waiting_for_approval: '请核对设备和校验码，再批准持仓只读访问。',
     approved: '已批准，请保持此页面打开，等待手机完成连接。',

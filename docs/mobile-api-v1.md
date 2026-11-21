@@ -16,7 +16,9 @@ The application publishes its typed success responses at `/openapi.json`. Like o
   "protocol_max": 1,
   "pairing": true,
   "password_login": true,
-  "portfolio_read": true
+  "portfolio_read": true,
+  "session_refresh": true,
+  "watchlist_read": true
 }
 ```
 
@@ -37,15 +39,25 @@ All paths below are relative to `/api/mobile/v1`.
 | `POST /pairings/{id}/exchange` | Phone | Send the claim key as the Bearer value after approval. A successful exchange returns `instance_id`, `device_id`, `origin`, `access_token`, `scope` and `expires_at`. The approved connection can only be exchanged once. A phone that loses the exchange response can create a fresh connection. |
 | `GET /devices` | Web | List connected devices with their name, platform, creation, expiration and revocation times. |
 | `DELETE /devices/{id}` | Web | Revoke the selected device and return its current record. Repeating the action preserves the original revocation time. |
+| `POST /session/refresh` | Phone | Exchange the current refresh bearer and a random `Idempotency-Key` for a rotated grant on the same instance. |
 | `GET /portfolio` | Phone | Send the issued access token as the Bearer value. |
+| `GET /symbols/watchlist` | Phone | Send a watchlist-enabled access token. Returns `market`, `symbol` and `name` in the Web watchlist order. |
 
 The QR is the JSON object returned under `data` when creating a pairing. Its fields are `kind` (`panwatch-pairing`), `protocol` (`1`), `pairing_id`, normalized `origin`, `challenge` and `expires_at`. It contains short-lived pairing material. The phone displays the confirmed origin before claiming and verifies the same origin in the grant before storing it.
 
-Pending states are `waiting_for_device`, `waiting_for_approval` and `approved`. Terminal states are `denied`, `cancelled`, `redeemed` and `expired`. Device grants expire after seven days and provide `portfolio:read`. Store grants in the OS secure credential store and clear the local session and displayed holdings on any device authorization failure.
+Pending states are `waiting_for_device`, `waiting_for_approval` and `approved`. Terminal states are `denied`, `cancelled`, `redeemed` and `expired`. A client that omits `renewable` keeps the seven-day `portfolio:read` grant. Store each grant in the OS secure credential store and clear that connection and its displayed data when access is revoked or cannot be recovered.
 
 For direct sign-in, perform the capability check without credentials. Submit the password only after the user confirms the HTTPS origin and the capability response supports password login. Discard the password after submitting. Existing Web login issues its Web session independently.
 
 The API reports `mobile_pairing_not_found` for unknown claims and `mobile_pairing_closed` for a conflicting or expired transition. A device request can return `mobile_device_invalid`, `mobile_device_expired` or `mobile_device_revoked` with status 401. Web routes also use the application login errors. Invalid setup or origin returns `mobile_login_setup_required`, `mobile_https_required` or `mobile_origin_mismatch`.
+
+## Renewable connections
+
+When `session_refresh` is available, an updated client can send `renewable: true` on password sign-in or on the first phone claim. The Web confirmation shows the requested read-only permissions. The grant includes `refresh_token`, `refresh_expires_at`, and `watchlist_read`. The access token expires in 15 minutes. The refresh window lasts 30 days from issuance or successful renewal. Existing portfolio-only grants retain their original expiry and scope.
+
+Use a fresh random 32-byte lowercase hex `Idempotency-Key` for each rotation. Persist it securely before sending the request. On success, atomically replace the saved grant and discard the key. If the response is lost, retry with the same refresh token and key. The server can re-emit that exact result for two minutes while it is still current. A different key with the retired refresh token receives 401. A Web revocation immediately blocks both access and refresh, including a retry of a successful rotation.
+
+Refresh credentials are accepted only at the refresh route. Access credentials are accepted only at the permitted read endpoints. The watchlist returns 403 `mobile_scope_required` for a current portfolio-only grant. Validate that the returned device, instance, and HTTPS origin match before saving a rotated grant.
 
 ## Portfolio amounts
 
