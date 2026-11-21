@@ -1,0 +1,45 @@
+name: Mobile beta feedback / 移动版测试反馈
+description: Report a reproducible issue in the PanWatch app / 提交 PanWatch App 中可复现的问题
+title: "[Mobile beta] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public. Remove QR codes, server addresses, credentials, and real holdings from your report.
+
+        此表单提交后公开。请先移除二维码、服务地址、凭据和真实持仓。
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform / 平台
+      options:
+        - Android
+        - iOS
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: App version and build / App 版本与构建号
+    validations:
+      required: true
+  - type: input
+    id: server_version
+    attributes:
+      label: PanWatch server version / PanWatch 服务版本
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      description: Include what you expected and what happened. / 请说明预期结果和实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message / 错误提示
+      description: Remove any private details from the message. / 请先移除错误提示中的隐私信息。
