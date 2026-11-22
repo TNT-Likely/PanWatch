@@ -8,6 +8,7 @@ import re
 import secrets
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
@@ -22,12 +23,13 @@ from sqlalchemy.orm import Session
 
 from src.modules.mobile.alerts import create_alert_router
 from src.modules.mobile.disclosures import create_disclosures_router
+from src.modules.mobile.fact_snapshots import FactTarget, PortfolioContributions, Symbol, build_postmarket_snapshot
 from src.modules.mobile.fact_tasks import create_fact_tasks_router
 from src.modules.mobile.diagnostics import create_diagnostics_router
 from src.modules.mobile.portfolio_history import PortfolioLookback, build_portfolio_lookback
 from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
 from src.modules.mobile.push import create_push_router, retire_device_push
-from src.modules.mobile.symbol_facts import create_symbol_facts_router
+from src.modules.mobile.symbol_facts import Market, create_symbol_facts_router
 from src.modules.mobile.screening import create_screening_router
 from src.modules.mobile.schemas import (
     Capabilities,
@@ -492,6 +494,18 @@ def create_router(
     def portfolio_metrics(credentials: Bearer, db: DB) -> MobileResponse[PortfolioMetrics]:
         _verify_device(credentials, db, _PORTFOLIO_SCOPE)
         return MobileResponse(data=build_portfolio_metrics(get_portfolio_summary(db)))
+
+    @router.get("/portfolio/contributions")
+    def portfolio_contributions(
+        credentials: Bearer, db: DB,
+        market: Market | None = None, symbol: Annotated[Symbol | None, Query()] = None,
+    ) -> MobileResponse[PortfolioContributions]:
+        _verify_device(credentials, db, _PORTFOLIO_SCOPE)
+        if (market is None) != (symbol is None):
+            raise api_error(400, "mobile_contribution_target_incomplete", "请同时提供市场和标的代码。")
+        target = FactTarget(market=market, symbol=symbol) if market is not None and symbol is not None else None
+        snapshot = build_postmarket_snapshot(get_portfolio_summary(db), target)
+        return MobileResponse(data=PortfolioContributions(**snapshot.model_dump(), computed_at=datetime.now(UTC)))
 
     @router.get("/portfolio/metrics/history")
     def portfolio_history(

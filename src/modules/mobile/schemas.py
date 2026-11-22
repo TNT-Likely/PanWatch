@@ -22,12 +22,14 @@ class Capabilities(BaseModel):
     password_login: bool
     portfolio_read: bool = True
     portfolio_metrics: bool = True
+    portfolio_contributions: bool = True
     symbol_facts: bool = True
     disclosures: bool = True
     disclosure_archive: bool = True
     fact_tasks: bool = True
     symbol_alert_history: bool = True
     screening: bool = True
+    screening_metrics: bool = True
     watchlist_manage: bool = True
     diagnostics_read: bool = True
     session_refresh: bool = True
@@ -99,12 +101,14 @@ class DeviceGrant(BaseModel):
     watchlist_read: bool = False
     alerts_manage: bool = False
     portfolio_metrics: bool = True
+    portfolio_contributions: bool = True
     symbol_facts: bool = True
     disclosures: bool = True
     disclosure_archive: bool = True
     fact_tasks: bool = True
     symbol_alert_history: bool = True
     screening: bool = True
+    screening_metrics: bool = True
     watchlist_manage: bool = False
     diagnostics_read: bool = False
 

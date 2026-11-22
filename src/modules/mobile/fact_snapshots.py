@@ -4,7 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -58,6 +58,10 @@ class PostmarketSnapshot(BaseModel):
     contributions: list[PositionContribution]
 
 
+class PortfolioContributions(PostmarketSnapshot):
+    computed_at: AwareDatetime
+
+
 FactSnapshot = Annotated[PremarketSnapshot | IntradaySnapshot | PostmarketSnapshot, Field(discriminator="phase")]
 
 
@@ -97,7 +101,7 @@ def _daily_pnl(positions: list[dict]) -> Metric:
     return _metric(positions, "daily_pnl", amount)
 
 
-def _postmarket(summary: dict, target: FactTarget | None) -> PostmarketSnapshot:
+def build_postmarket_snapshot(summary: dict, target: FactTarget | None = None) -> PostmarketSnapshot:
     positions = [
         item for account in summary["accounts"] for item in account["positions"]
         if target is None or (item["market"], item["symbol"]) == (target.market, target.symbol)
@@ -129,4 +133,4 @@ def capture_snapshot(
         return PremarketSnapshot(state=state, disclosures=disclosures)
     if phase == "intraday":
         return _intraday(db, target)
-    return _postmarket(get_portfolio_summary(db), target)
+    return build_postmarket_snapshot(get_portfolio_summary(db), target)
