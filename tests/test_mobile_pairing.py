@@ -104,6 +104,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
         "portfolio_metrics": True, "symbol_facts": True, "diagnostics_read": True,
+        "disclosures": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -681,3 +682,49 @@ def test_symbol_facts_keep_market_identity_and_aggregate_real_bar_periods(instan
     assert cn["target"]["market"] == "CN" and cn["currency"] == "CNY"
     assert cn["quote"]["price"] == 18 and cn["bars_source"] == "cn-bars"
     assert len(cn["bars"]) == 4 and cn["bars"][-1]["close"] == 33
+
+
+def test_disclosures_project_only_typed_facts_and_verified_source_links(instance, monkeypatch):
+    from datetime import datetime
+    from marketdata.types import EventItem
+    from src.modules.mobile import disclosures
+
+    client, sessions = instance
+    _, grant = _renewable_grant(client, sessions)
+    with sessions() as db:
+        db.add_all([
+            Stock(symbol="600999", market="CN", name="Synthetic issuer"),
+            Stock(symbol="600999", market="US", name="Same code other market"),
+        ])
+        db.commit()
+
+    url = "https://data.eastmoney.com/notices/detail/600999/AN1234567890.html"
+    legacy = "FIXTURE BUY RECOMMENDATION TARGET PRICE"
+    published = datetime(2026, 11, 20, 10)
+    observed = []
+
+    def supplied(symbols, *, market, since_days):
+        observed.append((symbols, market, since_days))
+        events = [
+            EventItem("eastmoney", "AN1234567890", "earnings", legacy, published, ["600999"], 3, url),
+            EventItem("eastmoney", "AN1234567891", "earnings", legacy, published, ["600999"], 3, "https://invalid.example/confidential"),
+            EventItem("eastmoney", "AN1234567892", "unclassified", legacy, published, ["600999"], 3, url),
+        ]
+        return events, len(observed) == 1
+
+    monkeypatch.setattr(disclosures, "get_market_data", lambda: SimpleNamespace(events_with_status=supplied))
+    auth = _bearer(grant["access_token"])
+    route = f"{MOBILE}/facts/disclosures"
+    assert client.get(route).status_code == 401
+    listed = client.get(route, headers=auth)
+    assert listed.status_code == 200
+    assert legacy not in listed.text and "invalid.example" not in listed.text
+    info = listed.json()["data"]
+    assert info["state"] == "ready" and len(info["items"]) == 1
+    item = info["items"][0]
+    assert item["target"]["market"] == "CN" and item["id"] == "600999:AN1234567890"
+    assert item["date"] == "2026-11-20" and item["kind"] == "earnings" and item["url"] == url
+    filtered = client.get(f"{route}?symbol=600999&market=CN&days=30", headers=auth).json()["data"]
+    assert filtered == {"state": "upstream_unavailable", "items": [item]}
+    assert observed == [(["600999"], "CN", 7), (["600999"], "CN", 30)]
+    assert client.get(f"{route}?market=US&symbol=600999", headers=auth).json()["data"]["state"] == "market_unavailable"

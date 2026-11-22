@@ -208,10 +208,14 @@ class MarketData:
 
     def events(self, symbols: list[str], *, market: str = "CN", since_days: int = 7) -> list[EventItem]:
         """结构化事件(东财公告)。批量 symbols。不在包内缓存(cache_ttl_sec=0);宿主自行缓存。"""
+        items, _ = self.events_with_status(symbols, market=market, since_days=since_days)
+        return items
+
+    def events_with_status(self, symbols: list[str], *, market: str = "CN", since_days: int = 7) -> tuple[list[EventItem], bool]:
         req = Request(symbols=tuple(symbols), market=market, since_hours=since_days * 24,
                       extra=(("since_days", since_days),))
         resp = self._events_engine.fetch(req, cache_ttl_sec=0)
-        return resp.data or []
+        return resp.data or [], resp.ok
 
     def flash_news(self, *, market: str = "CN", limit: int = 50, keyword: str | None = None) -> list[FlashNews]:
         """快讯(7×24)。市场级,symbols 恒空。不在包内缓存额外一层——用 Engine 默认 30s TTL。"""

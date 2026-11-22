@@ -21,6 +21,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from src.modules.mobile.alerts import create_alert_router
+from src.modules.mobile.disclosures import create_disclosures_router
 from src.modules.mobile.diagnostics import create_diagnostics_router
 from src.modules.mobile.portfolio_history import PortfolioLookback, build_portfolio_lookback
 from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
@@ -508,6 +509,7 @@ def create_router(
         return _verify_device(credentials, db, _WATCHLIST_SCOPE)
 
     router.include_router(create_symbol_facts_router(require_symbol_device))
+    router.include_router(create_disclosures_router(require_symbol_device))
     router.include_router(create_diagnostics_router(require_diagnostics_device))
     router.include_router(phone)
     router.include_router(create_alert_router(require_alert_device))
