@@ -1,6 +1,7 @@
 """Qualified market observations for symbols already in the instance's universe."""
 
 from datetime import date, datetime
+from collections.abc import Callable
 from math import isfinite
 from statistics import fmean
 from typing import Annotated, Literal
@@ -10,7 +11,6 @@ from pydantic import BaseModel, FiniteFloat
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.modules.market.api.klines import _aggregate_klines
 from src.modules.mobile.schemas import MobileResponse, WatchlistSymbol
 from src.platform.marketdata.marketdata_client import get_market_data, md_quote_rows
 from src.platform.marketdata.quote_display import assistant_quote_fields
@@ -74,7 +74,7 @@ def _quote(stock: Stock) -> QuoteSnapshot | None:
     return quote_snapshot(stock.market, raw)
 
 
-def create_symbol_facts_router(require_device) -> APIRouter:
+def create_symbol_facts_router(require_device, aggregate_klines: Callable[[list, str], list]) -> APIRouter:
     router = APIRouter(dependencies=[Depends(require_device)])
 
     @router.get("/symbols/{market}/{symbol}")
@@ -91,7 +91,7 @@ def create_symbol_facts_router(require_device) -> APIRouter:
         )
         daily = sorted((bar for bar in bars if all(_finite(value) for value in (bar.open, bar.high, bar.low, bar.close))),
                        key=lambda bar: bar.date)
-        points = [Point.model_validate(bar, from_attributes=True) for bar in _aggregate_klines(daily, interval)[-60:]]
+        points = [Point.model_validate(bar, from_attributes=True) for bar in aggregate_klines(daily, interval)[-60:]]
         average = fmean(bar.close for bar in daily[-20:]) if len(daily) >= 20 else None
         return MobileResponse(data=SymbolFacts(
             target=WatchlistSymbol.model_validate(stock, from_attributes=True), currency=_CURRENCIES[market],

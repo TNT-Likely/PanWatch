@@ -435,6 +435,9 @@ def create_router(
     verify_login_credentials: Callable[[Session, str, str], None],
     get_app_version: Callable[[], str],
     get_portfolio_summary: Callable[[Session], dict],
+    load_positions_without_quotes: Callable[[Session, int | None], dict],
+    read_agent_health: Callable[[Session], dict],
+    aggregate_klines: Callable[[list, str], list],
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(_no_store)])
     password = APIRouter(route_class=PasswordLoginRoute)
@@ -494,10 +497,8 @@ def create_router(
     def portfolio_history(
         credentials: Bearer, db: DB, account_id: Annotated[int | None, Query(ge=1)] = None,
     ) -> MobileResponse[PortfolioLookback]:
-        from src.modules.portfolio.api.accounts import get_portfolio_summary as account_summary
-
         _verify_device(credentials, db, _PORTFOLIO_SCOPE)
-        summary = account_summary(account_id=account_id, include_quotes=False, db=db)
+        summary = load_positions_without_quotes(db, account_id)
         if account_id is not None and not summary["accounts"]:
             raise api_error(404, "mobile_portfolio_account_not_found", "此账户不可用。")
         return MobileResponse(data=build_portfolio_lookback(summary))
@@ -524,10 +525,10 @@ def create_router(
         return _verify_device(credentials, db, _WATCHLIST_ADD_SCOPE)
 
     router.include_router(create_screening_router(require_symbol_device, require_watchlist_add))
-    router.include_router(create_symbol_facts_router(require_symbol_device))
+    router.include_router(create_symbol_facts_router(require_symbol_device, aggregate_klines))
     router.include_router(create_disclosures_router(require_symbol_device))
     router.include_router(create_fact_tasks_router(require_fact_task_device, get_portfolio_summary))
-    router.include_router(create_diagnostics_router(require_diagnostics_device))
+    router.include_router(create_diagnostics_router(require_diagnostics_device, read_agent_health))
     router.include_router(phone)
     router.include_router(create_alert_router(require_alert_device))
     router.include_router(create_push_router(require_alert_device))
