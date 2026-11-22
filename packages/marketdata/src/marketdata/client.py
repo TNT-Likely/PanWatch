@@ -144,10 +144,14 @@ class MarketData:
     def klines(self, symbol: str, *, market: str, days: int = 120, min_count: int = 1) -> list:
         """按 priority 主备取日K(不足则试下一个,全不足取最长)。返回 list[Bar]。
         不在包内缓存(cache_ttl_sec=0);宿主自行缓存。"""
+        bars, _ = self.klines_with_vendor(symbol, market=market, days=days, min_count=min_count)
+        return bars
+
+    def klines_with_vendor(self, symbol: str, *, market: str, days: int = 120, min_count: int = 1) -> tuple[list, str]:
         req = Request(symbols=(symbol,), market=market, timeframe="day", limit=days,
                       extra=(("days", days),))
         resp = self._kline_engine.fetch(req, min_count=min_count, cache_ttl_sec=0)
-        return resp.data or []
+        return resp.data or [], resp.vendor
 
     def quotes(self, symbols: list[str | Symbol], *, market: str | None = None) -> list[Quote]:
         """批量报价。symbols 可跨市场:未显式给 market 时按代码自动识别并分组。"""
@@ -204,10 +208,14 @@ class MarketData:
 
     def events(self, symbols: list[str], *, market: str = "CN", since_days: int = 7) -> list[EventItem]:
         """结构化事件(东财公告)。批量 symbols。不在包内缓存(cache_ttl_sec=0);宿主自行缓存。"""
+        items, _ = self.events_with_status(symbols, market=market, since_days=since_days)
+        return items
+
+    def events_with_status(self, symbols: list[str], *, market: str = "CN", since_days: int = 7) -> tuple[list[EventItem], bool]:
         req = Request(symbols=tuple(symbols), market=market, since_hours=since_days * 24,
                       extra=(("since_days", since_days),))
-        resp = self._events_engine.fetch(req, cache_ttl_sec=0)
-        return resp.data or []
+        resp = self._events_engine.fetch(req, cache_ttl_sec=0, min_count=0)
+        return resp.data or [], resp.ok
 
     def flash_news(self, *, market: str = "CN", limit: int = 50, keyword: str | None = None) -> list[FlashNews]:
         """快讯(7×24)。市场级,symbols 恒空。不在包内缓存额外一层——用 Engine 默认 30s TTL。"""

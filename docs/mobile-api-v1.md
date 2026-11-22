@@ -68,7 +68,7 @@ An updated client can request `manage_alerts: true` alongside `renewable: true` 
 | `GET /alerts` | Read the instance's rules and condition groups with the associated market and symbol. |
 | `POST /alerts` | Create a single price threshold for an existing watchlist symbol. Send `market`, `symbol`, `comparison` (`<` or `>`), `price`, and a UUID `request_id`. Reuse the request ID when retrying an ambiguous response. |
 | `POST /alerts/{id}/enabled` | Set `enabled` explicitly. The existing price and compound conditions are preserved. |
-| `GET /events` | Read up to 50 recent persisted hits by default. A `limit` from 1 to 200 is supported. |
+| `GET /events` | Read up to 50 recent persisted hits by default. A `limit` from 1 to 200 is supported. Services advertising `symbol_alert_history` accept `market` and `symbol` together to filter the result before applying the limit. |
 | `GET /events/{id}` | Read a specific hit by its instance-local event ID. The response includes the triggering rule, market, symbol, UTC timestamp and the stored observation and condition results. |
 
 Rules created from the mobile client do not inherit the Web user's default outbound channels. Explicitly selected channels in Web settings continue to apply. The history endpoint uses the actual stored trigger and is available independently of push registration.
@@ -103,3 +103,24 @@ When valuation is `partial`, the total includes available values and recorded ca
   ]
 }
 ```
+
+## Portfolio metrics and service diagnostics
+
+`GET /portfolio/metrics` uses the existing portfolio read grant and reports the current holdings basis, CNY assets, and the account and aggregate P/L figures. Partial and unavailable metrics use an explicit coverage state and a null value. The original `GET /portfolio` response retains its original fields.
+
+Clients may request `read_diagnostics: true` with a renewable connection when `diagnostics_read` is advertised. Review that access in the QR approval or direct sign-in. Diagnostics endpoints use the explicit device grant, which stays in scope through renewal and ends on revocation.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /diagnostics` | List the scheduled workflows visible in Web and recent provider-level source telemetry. The view projects workflow status, timestamps and aggregate source statistics. |
+| `POST /diagnostics/sources/{id}/test` | Test an enabled configured source and return its success flag, elapsed time and observed timestamp. |
+
+`GET /symbols/{market}/{symbol}?interval=1d` reads an existing symbol using its market and code. It requires watchlist read access. The response identifies the vendor observations, currency, quote freshness, daily moving average and OHLC points for the selected interval. Weekly and monthly points use the same calendar aggregation as Web. A missing observation remains null or an empty series.
+
+`GET /portfolio/metrics/history` optionally takes an `account_id`. It revisits current positions using dated closing prices, the instance summary's exchange rates held fixed, and the current recorded cash. Days missing a position or its conversion rate have a null value and a coverage count. The view is a current-holdings estimate.
+
+`GET /facts/disclosures` lists typed, date-filtered issuer disclosures for the current watchlist or a single symbol. The current source covers mainland Chinese issuers. Results use stable source references and include the provider's disclosure page, date and event type. The response identifies source unavailability and omits arbitrary article titles, full reports, recommendations and invalid external links.
+
+`GET /facts/disclosures/archive?on=YYYY-MM-DD` reads recorded source references for the given workflow date. Clients may add `agent=premarket_outlook`, `agent=intraday_monitor` or `agent=daily_report` and the same market and symbol filters. It requires watchlist read access and is advertised by `disclosure_archive`. A record preserves the stable disclosure ID and original publication date. The service uses the source references captured with the workflow, which may cover only some issuers.
+
+`GET /screening` takes a market, a name or symbol query, and optional lower and upper quote bounds. It returns prices with their available source dates, lists candidates by symbol, and reports missing quotes. `POST /symbols/watchlist/add` needs the explicit `watchlist:add` grant requested with `manage_watchlist: true`. The service resolves the candidate by market and code. Repeated additions return the existing stock, preserving its name and configured agents.

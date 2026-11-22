@@ -24,6 +24,7 @@ from src.platform.marketdata.models import MarketCode, MARKETS
 from src.platform.marketdata.quote_display import daily_quote_fields
 from src.platform.scheduling import trading_calendar
 from src.platform.scheduling.schedule_parser import parse_schedule
+from src.modules.market.watchlist import add_stock
 from src.modules.automation.scheduling_policy import request_scheduler_reload
 from src.modules.automation.agent_catalog import AGENT_KIND_WORKFLOW, infer_agent_kind
 from src.web.errors import api_error
@@ -254,19 +255,9 @@ def get_quotes(db: Session = Depends(get_db)):
 
 @router.post("", response_model=StockResponse)
 def create_stock(stock: StockCreate, db: Session = Depends(get_db)):
-    existing = db.query(Stock).filter(
-        Stock.symbol == stock.symbol, Stock.market == stock.market
-    ).first()
-    if existing:
+    db_stock = add_stock(db, **stock.model_dump())
+    if db_stock is None:
         raise api_error(400, "stock_already_exists", f"股票 {stock.symbol} 已存在")
-
-    max_order = db.query(func.max(Stock.sort_order)).scalar() or 0
-    values = stock.model_dump()
-    values["asset_type"] = infer_asset_type(stock.name, stock.asset_type)
-    db_stock = Stock(**values, sort_order=int(max_order) + 1)
-    db.add(db_stock)
-    db.commit()
-    db.refresh(db_stock)
     return _stock_to_response(db_stock, _agent_display_names(db, [db_stock]))
 
 

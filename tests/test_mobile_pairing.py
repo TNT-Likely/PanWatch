@@ -1,5 +1,7 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
@@ -10,13 +12,15 @@ from sqlalchemy.orm import sessionmaker
 
 from src.bootstrap.application import app
 from src.modules.administration.api import auth, settings
-from src.modules.market import alert_delivery, price_alert_engine
+from src.modules.market import alert_delivery, data_collector, price_alert_engine
 from src.modules.mobile import api as mobile, push
 from src.modules.portfolio.api import accounts
+from src.platform.marketdata import marketdata_client
 from src.platform.persistence.database import Base, get_db
 from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal, _m144_mobile_push_routes
 from src.platform.persistence.models import (
-    Account, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position, PriceAlertDelivery, PriceAlertRule, Stock,
+    Account, AgentConfig, AgentRun, DataSource, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position,
+    PriceAlertDelivery, PriceAlertHit, PriceAlertRule, Stock,
 )
 from src.platform.scheduling import trading_calendar
 
@@ -60,7 +64,7 @@ def _start(client, owner):
     return response.json()["data"]
 
 
-def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=False):
+def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=False, read_diagnostics=False, manage_watchlist=False):
     body = {
         "challenge": qr["challenge"],
         "claim_key": claim_key,
@@ -71,6 +75,10 @@ def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=Fa
         body["renewable"] = True
     if manage_alerts:
         body["manage_alerts"] = True
+    if read_diagnostics:
+        body["read_diagnostics"] = True
+    if manage_watchlist:
+        body["manage_watchlist"] = True
     return client.post(f"{MOBILE}/pairings/{qr['pairing_id']}/claim", json=body)
 
 
@@ -78,14 +86,16 @@ def _exchange(client, root, claim_key=PHONE_KEY):
     return client.post(f"{root}/exchange", headers=_bearer(claim_key))
 
 
-def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False):
-    response = _claim(client, qr, renewable=renewable, manage_alerts=manage_alerts)
+def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False, read_diagnostics=False, manage_watchlist=False):
+    response = _claim(client, qr, renewable=renewable, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics, manage_watchlist=manage_watchlist)
     assert response.status_code == 200, response.text
     code = response.json()["data"]["verification_code"]
     review = client.get(root, headers=owner).json()["data"]
     assert review["verification_code"] == code
     assert review["renewable"] is renewable
     assert review["manage_alerts"] is manage_alerts
+    assert review["read_diagnostics"] is read_diagnostics
+    assert review["manage_watchlist"] is manage_watchlist
     response = client.post(f"{root}/decision", headers=owner, json={
         "decision": "approve", "verification_code": code,
     })
@@ -98,6 +108,9 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
+        "portfolio_metrics": True, "symbol_facts": True, "diagnostics_read": True,
+        "disclosures": True, "disclosure_archive": True, "symbol_alert_history": True,
+        "screening": True, "watchlist_manage": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -294,11 +307,11 @@ def test_read_only_portfolio_reports_partial_valuation_and_refreshes_real_positi
     assert client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]["total_assets"] == 80
 
 
-def _renewable_grant(client, sessions, *, manage_alerts=False):
+def _renewable_grant(client, sessions, *, manage_alerts=False, read_diagnostics=False, manage_watchlist=False):
     owner = _owner(sessions)
     qr = _start(client, owner)
     root = f"{MOBILE}/pairings/{qr['pairing_id']}"
-    _approve(client, owner, root, qr, renewable=True, manage_alerts=manage_alerts)
+    _approve(client, owner, root, qr, renewable=True, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics, manage_watchlist=manage_watchlist)
     return owner, _exchange(client, root).json()["data"]
 
 
@@ -430,6 +443,20 @@ def test_mobile_alerts_replay_real_engine_and_keep_web_rules_and_channels(instan
         assert db.get(PriceAlertRule, web_rule_id).condition_group == group
         deliveries = db.scalars(select(PriceAlertDelivery).where(PriceAlertDelivery.hit_id == event_id)).all()
         assert all(row.channel_id is None for row in deliveries)
+        other_stock = Stock(symbol="PWTST", market="US", name="US fixture")
+        other_rule = PriceAlertRule(stock=other_stock, name="Same code in another market", condition_group=group)
+        later = datetime.fromisoformat(event["occurred_at"]).replace(tzinfo=None) + timedelta(minutes=1)
+        other_event = PriceAlertHit(stock=other_stock, rule=other_rule, trigger_time=later)
+        db.add(other_event)
+        db.commit()
+        other_id = other_event.id
+
+    history = f"{MOBILE}/events?limit=1"
+    assert client.get(history, headers=device).json()["data"][0]["id"] == other_id
+    assert client.get(f"{history}&market=CN&symbol=PWTST", headers=device).json()["data"] == [event]
+    assert client.get(f"{history}&market=US&symbol=PWTST", headers=device).json()["data"][0]["id"] == other_id
+    assert client.get(f"{history}&market=CN", headers=device).status_code == 422
+    assert client.get(f"{history}&market=CN&symbol=PWTST", headers=_bearer(old["access_token"])).status_code == 403
 
     rotated = _renew(client, grant["refresh_token"], "9" * 64).json()["data"]
     assert rotated["alerts_manage"] is True
@@ -551,3 +578,263 @@ def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
         assert tuple(channel) == ("web-event", None)
         assert conn.scalar(text("SELECT name FROM accounts WHERE id = 1")) == "Legacy holding account"
     engine.dispose()
+
+
+def test_portfolio_metrics_use_same_device_scope_and_preserve_original_response(instance, monkeypatch):
+    client, sessions = instance
+    owner, grant = _renewable_grant(client, sessions)
+    device = _bearer(grant["access_token"])
+    summary = {
+        "accounts": [{
+            "id": 6, "name": "Test", "total_assets": 50, "total_pnl": 3, "total_daily_pnl": 0,
+            "positions": [{
+                "symbol": "TEST", "name": "Synthetic", "market": "US", "quantity": 2,
+                "market_value": 4, "daily_pnl": 0, "private_note": "fixture only",
+            }],
+        }],
+        "total": {"total_assets": 50, "total_pnl": 3, "total_daily_pnl": 0},
+    }
+    monkeypatch.setattr(accounts, "get_portfolio_summary", lambda **kwargs: summary)
+    metrics_path = f"{MOBILE}/portfolio/metrics"
+    assert client.get(metrics_path).status_code == 401
+    assert client.get(metrics_path, headers=owner).status_code == 401
+    result = client.get(metrics_path, headers=device)
+    assert result.status_code == 200 and result.headers["Cache-Control"] == "no-store"
+    assert result.json()["data"]["accounts"][0]["unrealized_pnl"] == {"value": 3, "coverage": "complete"}
+    assert "private_note" not in result.text
+    original = client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]
+    assert set(original) == {"total_assets", "currency", "valuation", "holdings"}
+    assert original["holdings"][0]["currency"] == "USD"
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.get(metrics_path, headers=device).status_code == 401
+
+
+def test_diagnostics_preserve_explicit_scope_and_hide_provider_internals(instance, monkeypatch):
+    client, sessions = instance
+    _, old = _renewable_grant(client, sessions)
+    owner, grant = _renewable_grant(client, sessions, read_diagnostics=True)
+    assert not old["diagnostics_read"] and grant["diagnostics_read"]
+    base = f"{MOBILE}/diagnostics"
+    device = _bearer(grant["access_token"])
+    assert client.get(base, headers=_bearer(old["access_token"])).status_code == 403
+    sentinel = "DIAGNOSTICS_PRIVATE_FIXTURE"
+    with sessions() as db:
+        agent = AgentConfig(name="diagnostic-fixture", display_name="Synthetic agent", config={"prompt": sentinel})
+        db.add(agent)
+        db.add(AgentRun(agent_name=agent.name, status="failed", error=sentinel, result=sentinel))
+        source = DataSource(name="Synthetic source", type="quote", provider="fixture", config={"secret": sentinel})
+        db.add(source)
+        db.commit()
+        source_id = source.id
+
+    monkeypatch.setattr(marketdata_client, "get_market_data", lambda: SimpleNamespace(health=lambda: {
+        "fixture": {"count": 4, "success_rate": 0.75, "last_success_at": 1_700_000_000, "last_error": sentinel},
+    }))
+    probes = []
+
+    async def probe(source):
+        probes.append(source.id)
+        return SimpleNamespace(success=False, duration_ms=7, error=sentinel)
+
+    monkeypatch.setattr(data_collector, "get_collector_manager", lambda: SimpleNamespace(test_source=probe))
+    response = client.get(base, headers=device)
+    assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
+    assert sentinel not in response.text
+    data = response.json()["data"]
+    assert data["sources"][0]["provider_success_rate"] == 0.75
+    assert data["agents"][0]["label"] == "Synthetic agent" and data["agents"][0]["result"] == "failed"
+    path = f"{base}/sources/{source_id}/test"
+    assert client.post(path, headers=owner).status_code == 401 and not probes
+    tested = client.post(path, headers=device)
+    assert tested.status_code == 200 and sentinel not in tested.text
+    assert tested.json()["data"]["passed"] is False and tested.json()["data"]["duration_ms"] == 7
+    assert probes == [source_id]
+    rotated = _renew(client, grant["refresh_token"], "e" * 64).json()["data"]
+    assert rotated["diagnostics_read"] is True
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.post(path, headers=_bearer(rotated["access_token"])).status_code == 401
+
+
+def test_symbol_facts_keep_market_identity_and_aggregate_real_bar_periods(instance, monkeypatch):
+    from datetime import date, timedelta
+    from marketdata.types import Bar
+    from src.modules.mobile import symbol_facts
+
+    client, sessions = instance
+    _, current = _renewable_grant(client, sessions)
+    with sessions() as db:
+        db.add_all([
+            Stock(symbol="SAME", market="US", name="US security"),
+            Stock(symbol="SAME", market="CN", name="CN security"),
+        ])
+        db.commit()
+
+    def quote_rows(symbols, market):
+        assert symbols == ["SAME"]
+        return [
+            {"symbol": "SAME", "market": "US", "current_price": 125, "source": "us-fixture", "quote_date": "2026-09-24", "legacy_advice": "fixture advice"},
+            {"symbol": "SAME", "market": "CN", "current_price": 18, "source": "cn-fixture", "quote_date": "2026-09-24"},
+        ]
+
+    def bars(symbol, *, market, days):
+        price = 100 if market == "US" else 10
+        data = [
+            Bar((date(2026, 9, 1) + timedelta(days=index)).isoformat(), price, price + index, price + index + 1, price - 1)
+            for index in range(24)
+        ]
+        return data, f"{market.lower()}-bars"
+
+    monkeypatch.setattr(symbol_facts, "md_quote_rows", quote_rows)
+    monkeypatch.setattr(symbol_facts, "get_market_data", lambda: SimpleNamespace(klines_with_vendor=bars))
+    device = _bearer(current["access_token"])
+    path = f"{MOBILE}/symbols"
+    assert client.get(f"{path}/US/SAME").status_code == 401
+    assert client.get(f"{path}/HK/SAME", headers=device).status_code == 404
+    assert client.get(f"{path}/US/SAME?interval=hour", headers=device).status_code == 422
+    us = client.get(f"{path}/US/SAME", headers=device)
+    assert us.status_code == 200 and "fixture advice" not in us.text
+    result = us.json()["data"]
+    assert result["target"]["market"] == "US" and result["currency"] == "USD"
+    assert result["quote"]["price"] == 125 and result["quote"]["source"] == "us-fixture"
+    assert result["bars_source"] == "us-bars" and len(result["bars"]) == 24
+    assert result["sma20_daily"] == 113.5
+    cn = client.get(f"{path}/CN/SAME?interval=1w", headers=device).json()["data"]
+    assert cn["target"]["market"] == "CN" and cn["currency"] == "CNY"
+    assert cn["quote"]["price"] == 18 and cn["bars_source"] == "cn-bars"
+    assert len(cn["bars"]) == 4 and cn["bars"][-1]["close"] == 33
+
+
+def test_disclosures_project_only_typed_facts_and_verified_source_links(instance, monkeypatch):
+    from datetime import datetime
+    from marketdata.types import EventItem
+    from src.modules.mobile import disclosures
+
+    client, sessions = instance
+    _, grant = _renewable_grant(client, sessions)
+    with sessions() as db:
+        db.add_all([
+            Stock(symbol="600999", market="CN", name="Synthetic issuer"),
+            Stock(symbol="600999", market="US", name="Same code other market"),
+        ])
+        db.commit()
+
+    url = "https://data.eastmoney.com/notices/detail/600999/AN1234567890.html"
+    legacy = "FIXTURE BUY RECOMMENDATION TARGET PRICE"
+    published = datetime(2026, 11, 20, 10)
+    observed = []
+
+    def supplied(symbols, *, market, since_days):
+        observed.append((symbols, market, since_days))
+        events = [
+            EventItem("eastmoney", "AN1234567890", "earnings", legacy, published, ["600999"], 3, url),
+            EventItem("eastmoney", "AN1234567891", "earnings", legacy, published, ["600999"], 3, "https://invalid.example/confidential"),
+            EventItem("eastmoney", "AN1234567892", "unclassified", legacy, published, ["600999"], 3, url),
+        ]
+        return events, len(observed) == 1
+
+    monkeypatch.setattr(disclosures, "get_market_data", lambda: SimpleNamespace(events_with_status=supplied))
+    auth = _bearer(grant["access_token"])
+    route = f"{MOBILE}/facts/disclosures"
+    assert client.get(route).status_code == 401
+    listed = client.get(route, headers=auth)
+    assert listed.status_code == 200
+    assert legacy not in listed.text and "invalid.example" not in listed.text
+    info = listed.json()["data"]
+    assert info["state"] == "ready" and len(info["items"]) == 1
+    item = info["items"][0]
+    assert item["target"]["market"] == "CN" and item["id"] == "600999:AN1234567890"
+    assert item["date"] == "2026-11-20" and item["kind"] == "earnings" and item["url"] == url
+    filtered = client.get(f"{route}?symbol=600999&market=CN&days=30", headers=auth).json()["data"]
+    assert filtered == {"state": "upstream_unavailable", "items": [item]}
+    assert observed == [(["600999"], "CN", 7), (["600999"], "CN", 30)]
+    assert client.get(f"{route}?market=US&symbol=600999", headers=auth).json()["data"]["state"] == "market_unavailable"
+
+
+def test_disclosure_archive_projects_saved_facts_by_date_agent_and_market(instance):
+    from src.platform.persistence.models import AgentContextRun
+
+    client, sessions = instance
+    _, grant = _renewable_grant(client, sessions)
+    legacy = "FIXTURE LEGACY REPORT TARGET PRICE"
+    day = "2026-11-20"
+    article = "AN202611200001"
+    observation = {
+        "time": f"{day} 10:15", "source": "eastmoney", "external_id": article, "event_type": "dividend",
+        "url": f"https://data.eastmoney.com/notices/detail/600999/{article}.html",
+        "title": legacy, "body": legacy,
+    }
+    context = {"events": [observation, {**observation, "time": "invalid"},
+                          {**observation, "url": "https://other.example/report"}], "analysis": legacy}
+    with sessions() as db:
+        db.add_all([
+            Stock(symbol="600999", market="CN", name="Synthetic issuer"),
+            AgentContextRun(agent_name="daily_report", stock_symbol="*", analysis_date=day, context_payload={
+                "symbols": {"CN:600999": context, "US:600999": context}, "result": legacy,
+            }),
+            AgentContextRun(agent_name="premarket_outlook", stock_symbol="*", analysis_date=day,
+                            context_payload={"content": legacy, "symbols": {"US:600999": context}}),
+            AgentContextRun(agent_name="intraday_monitor", stock_symbol="*", analysis_date="2026-11-21",
+                            context_payload={"symbols": {"CN:600999": context}}),
+        ])
+        db.commit()
+    route = f"{MOBILE}/facts/disclosures/archive?on={day}"
+    auth = _bearer(grant["access_token"])
+    assert grant["disclosure_archive"] is True
+    assert client.get(route).status_code == 401
+    response = client.get(f"{route}&agent=daily_report&market=CN&symbol=600999", headers=auth)
+    assert response.status_code == 200
+    assert legacy not in response.text and "other.example" not in response.text
+    assert response.json()["data"] == {"state": "ready", "items": [{
+        "id": f"600999:{article}", "target": {"name": "Synthetic issuer", "symbol": "600999", "market": "CN"},
+        "kind": "dividend", "date": day, "source": "eastmoney", "url": observation["url"],
+    }]}
+    for mismatch in ("agent=premarket_outlook", "agent=intraday_monitor", "symbol=000001", "market=US"):
+        assert client.get(f"{route}&{mismatch}", headers=auth).json()["data"]["items"] == []
+    assert client.get(f"{route}&agent=tradingagents", headers=auth).status_code == 422
+
+
+def test_screening_is_numeric_and_watchlist_add_is_explicit_and_idempotent(instance, monkeypatch):
+    from src.modules.mobile import screening
+
+    client, sessions = instance
+    owner, viewer = _renewable_grant(client, sessions)
+    _, editor = _renewable_grant(client, sessions, manage_watchlist=True)
+    rows = [
+        {"symbol": "EXP", "name": "Higher price", "market": "US"},
+        {"symbol": "SAME", "name": "Matching synthetic symbol", "market": "US"},
+        {"symbol": "NODATA", "name": "Unavailable quote", "market": "US"},
+        {"symbol": "SAME", "name": "Different market", "market": "CN"},
+    ]
+    def search(term, market, limit):
+        if term == "SAME":
+            return [row for row in rows if row["symbol"] == term]
+        return rows
+
+    monkeypatch.setattr(screening, "search_stocks", search)
+    monkeypatch.setattr(screening, "md_quote_rows", lambda *_: [
+        {"symbol": "EXP", "market": "US", "current_price": 50},
+        {"symbol": "SAME", "market": "US", "current_price": 12, "source": "fixture-quote", "quote_date": "2026-11-20"},
+        {"symbol": "SAME", "market": "CN", "current_price": 95, "source": "wrong-market"},
+    ])
+    view = _bearer(viewer["access_token"])
+    write = _bearer(editor["access_token"])
+    screened = client.get(f"{MOBILE}/screening?q=TEST&market=US&min_price=10&max_price=20", headers=view)
+    assert screened.status_code == 200
+    data = screened.json()["data"]
+    assert data["missing_quotes"] == 1 and data["currency"] == "USD"
+    assert len(data["candidates"]) == 1 and data["candidates"][0]["price"] == 12
+    assert data["candidates"][0]["target"]["market"] == "US" and "wrong-market" not in screened.text
+    assert client.get(f"{MOBILE}/screening?q=TEST&market=US&min_price=30&max_price=20", headers=view).status_code == 400
+    assert client.get(f"{MOBILE}/screening?q=TEST&market=US&min_price=-1", headers=view).status_code == 422
+    path = f"{MOBILE}/symbols/watchlist/add"
+    body = {"market": "US", "symbol": "SAME"}
+    assert client.post(path, headers=view, json=body).status_code == 403
+    assert editor["watchlist_manage"] is True
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replies = list(pool.map(lambda _: client.post(path, headers=write, json=body), range(2)))
+    assert [reply.status_code for reply in replies] == [200, 200]
+    assert replies[0].json()["data"] == replies[1].json()["data"] == rows[1]
+    with sessions() as db:
+        assert db.query(Stock).filter_by(symbol="SAME", market="US").count() == 1
+    assert client.post("/api/stocks", headers=owner, json={**body, "name": "Duplicate"}).status_code == 400
+    assert client.get(f"{MOBILE}/symbols/watchlist", headers=view).json()["data"] == [rows[1]]

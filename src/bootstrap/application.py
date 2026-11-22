@@ -73,6 +73,11 @@ app.include_router(
         verify_login_credentials=auth.verify_login_credentials,
         get_app_version=get_app_version,
         get_portfolio_summary=lambda db: accounts.get_portfolio_summary(db=db),
+        load_positions_without_quotes=lambda db, account_id: accounts.get_portfolio_summary(
+            account_id=account_id, include_quotes=False, db=db,
+        ),
+        read_agent_health=lambda db: agents.agents_health(include_internal=False, db=db),
+        aggregate_klines=klines._aggregate_klines,
     ),
     prefix="/api/mobile/v1",
     tags=["mobile"],
