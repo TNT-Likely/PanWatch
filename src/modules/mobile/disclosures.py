@@ -69,6 +69,25 @@ def _cn_universe(db: Session, symbol: str | None) -> dict[str, WatchlistSymbol]:
     return universe
 
 
+def load_disclosures(db: Session, market: str, symbol: str | None, days: int) -> Disclosures:
+    if market != "CN":
+        return Disclosures(state="market_unavailable", items=[])
+
+    universe = _cn_universe(db, symbol)
+    if not universe:
+        return Disclosures(state="ready", items=[])
+
+    events, success = get_market_data().events_with_status(list(universe), market=market, since_days=days)
+    items = {}
+    for event in events:
+        for code in set(event.symbols).intersection(universe):
+            item = _verified_disclosure(universe[code], event.source, event.external_id,
+                                        event.event_type, event.publish_time.date(), event.url)
+            if item:
+                items.setdefault(item.id, item)
+    return Disclosures(state="ready" if success else "upstream_unavailable", items=_latest_items(items))
+
+
 def create_disclosures_router(require_device) -> APIRouter:
     router = APIRouter(dependencies=[Depends(require_device)])
 
@@ -80,24 +99,7 @@ def create_disclosures_router(require_device) -> APIRouter:
     ) -> MobileResponse[Disclosures]:
         if symbol is not None and db.scalar(select(Stock.id).where(Stock.market == market, Stock.symbol == symbol).limit(1)) is None:
             raise api_error(404, "mobile_symbol_not_found", "此标的不可用。")
-        if market != "CN":
-            return MobileResponse(data=Disclosures(state="market_unavailable", items=[]))
-
-        universe = _cn_universe(db, symbol)
-        if not universe:
-            return MobileResponse(data=Disclosures(state="ready", items=[]))
-
-        events, success = get_market_data().events_with_status(list(universe), market=market, since_days=int(days))
-        items = {}
-        for event in events:
-            for code in set(event.symbols).intersection(universe):
-                item = _verified_disclosure(universe[code], event.source, event.external_id,
-                                            event.event_type, event.publish_time.date(), event.url)
-                if item:
-                    items.setdefault(item.id, item)
-        return MobileResponse(data=Disclosures(
-            state="ready" if success else "upstream_unavailable", items=_latest_items(items),
-        ))
+        return MobileResponse(data=load_disclosures(db, market, symbol, int(days)))
 
     @router.get("/facts/disclosures/archive")
     def archive(

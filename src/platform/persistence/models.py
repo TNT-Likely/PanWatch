@@ -1475,6 +1475,26 @@ class MobileDevice(Base):
     refresh_replay_until = Column(Integer, nullable=True)
 
 
+class MobileFactTask(Base):
+    __tablename__ = "mobile_fact_tasks"
+    __table_args__ = (
+        Index("ix_mobile_fact_tasks_device_date", "device_id", "created_on", "created_at"),
+    )
+
+    id = Column(String, primary_key=True)
+    device_id = Column(String, ForeignKey("mobile_devices.id", ondelete="CASCADE"), nullable=False)
+    phase = Column(String, nullable=False)
+    market = Column(String, nullable=True)
+    symbol = Column(String, nullable=True)
+    state = Column(String, nullable=False)
+    created_at = Column(Integer, nullable=False)
+    created_on = Column(Date, nullable=False)
+    finished_at = Column(Integer, nullable=True)
+    lease_token = Column(String, nullable=True)
+    lease_until = Column(Integer, nullable=True)
+    result = Column(JSON, nullable=True)
+
+
 class MobilePushRoute(Base):
     __tablename__ = "mobile_push_routes"
     __table_args__ = (
