@@ -1,6 +1,7 @@
 """Device-scoped read-only views of the existing service diagnostics."""
 
 import asyncio
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
@@ -54,16 +55,15 @@ class Diagnostics(BaseModel):
 _RUN_STATES = {state: state for state in ("running", "success", "failed", "cancelled", "skipped")}
 
 
-def create_diagnostics_router(require_device) -> APIRouter:
+def create_diagnostics_router(require_device, read_agent_health: Callable[[Session], dict]) -> APIRouter:
     router = APIRouter(dependencies=[Depends(require_device)])
 
     @router.get("/diagnostics")
     def snapshot(db: DB) -> MobileResponse[Diagnostics]:
-        from src.modules.automation.api.agents import agents_health
         from src.platform.marketdata.marketdata_client import get_market_data
 
         agents = []
-        for row in agents_health(include_internal=False, db=db)["agents"]:
+        for row in read_agent_health(db)["agents"]:
             last = row["last_run"] or {}
             upcoming = row["next_runs"]
             agents.append(AgentHealth(
