@@ -109,7 +109,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
         "portfolio_metrics": True, "symbol_facts": True, "diagnostics_read": True,
-        "disclosures": True, "disclosure_archive": True, "symbol_alert_history": True,
+        "disclosures": True, "disclosure_archive": True, "fact_tasks": True, "symbol_alert_history": True,
         "screening": True, "watchlist_manage": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
@@ -791,6 +791,113 @@ def test_disclosure_archive_projects_saved_facts_by_date_agent_and_market(instan
     for mismatch in ("agent=premarket_outlook", "agent=intraday_monitor", "symbol=000001", "market=US"):
         assert client.get(f"{route}&{mismatch}", headers=auth).json()["data"]["items"] == []
     assert client.get(f"{route}&agent=tradingagents", headers=auth).status_code == 422
+
+
+def test_fact_task_resumes_same_id_and_preserves_device_bound_history(instance, monkeypatch):
+    from marketdata.types import EventItem
+    from src.modules.mobile import disclosures, fact_tasks
+    from src.platform.persistence.models import MobileDevice, MobileFactTask
+
+    client, sessions = instance
+    owner, device = _renewable_grant(client, sessions)
+    _, other = _renewable_grant(client, sessions)
+    auth = _bearer(device["access_token"])
+    outsider = _bearer(other["access_token"])
+    task_id = str(uuid4())
+    route = f"{MOBILE}/facts/tasks/{task_id}"
+    body = {"phase": "premarket", "target": {"market": "CN", "symbol": "600999"}}
+    legacy = "TEST LEGACY RECOMMENDATION BODY"
+    with sessions() as db:
+        db.add(Stock(symbol="600999", market="CN", name="Fact fixture"))
+        db.commit()
+
+    captures = []
+    source_reads = []
+    capture = fact_tasks._capture
+    monkeypatch.setattr(fact_tasks, "_capture", lambda *args: captures.append(args))
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(executor.map(lambda _: client.put(route, headers=auth, json=body), range(2)))
+    assert [reply.status_code for reply in responses] == [200, 200]
+    assert {reply.json()["data"]["state"] for reply in responses} == {"running"}
+    assert len(captures) == 1
+    assert client.get(route).status_code == 401
+    assert client.get(route, headers=outsider).status_code == 404
+    assert client.put(route, headers=outsider, json=body).status_code == 404
+    with sessions() as db:
+        db.get(MobileDevice, other["device_id"]).scope = "watchlist:read"
+        db.commit()
+    assert client.get(f"{MOBILE}/facts/tasks", headers=outsider).status_code == 403
+    assert client.put(f"{MOBILE}/facts/tasks/{uuid4()}", headers=outsider, json={"phase": "postmarket"}).status_code == 403
+    with sessions() as db:
+        db.get(MobileDevice, other["device_id"]).scope = "portfolio:read watchlist:read"
+        db.commit()
+    assert client.put(route, headers=auth, json={"phase": "intraday"}).status_code == 409
+    assert client.get(f"{MOBILE}/facts/tasks?market=CN", headers=auth).status_code == 422
+
+    def announced(symbols, *, market, since_days):
+        source_reads.append((symbols, market, since_days))
+        return [EventItem("eastmoney", "AN202611200001", "dividend", legacy, datetime(2026, 11, 20),
+                          ["600999"], 3, "https://data.eastmoney.com/notices/detail/600999/AN202611200001.html")], True
+
+    monkeypatch.setattr(disclosures, "get_market_data", lambda: SimpleNamespace(events_with_status=announced))
+    with sessions() as db:
+        db.get(MobileFactTask, task_id).lease_until = 0
+        db.commit()
+    assert client.get(route, headers=auth).json()["data"]["state"] == "retryable"
+    assert not source_reads
+    monkeypatch.setattr(fact_tasks, "_capture", capture)
+    assert client.put(route, headers=auth, json=body).status_code == 200
+    reply = client.get(route, headers=auth)
+    result = reply.json()["data"]
+    assert result["id"] == task_id and result["state"] == "complete"
+    assert legacy not in reply.text
+    assert result["result"]["disclosures"]["items"][0]["kind"] == "dividend"
+    assert client.put(route, headers=auth, json=body).json()["data"] == result
+    capture(*captures[0])
+    assert source_reads == [(["600999"], "CN", 7)]
+    filtered = client.get(
+        f"{MOBILE}/facts/tasks?phase=premarket&market=CN&symbol=600999&on={result['created_on']}", headers=auth,
+    ).json()["data"]
+    assert [row["id"] for row in filtered] == [task_id] and "result" not in filtered[0]
+    assert client.get(f"{MOBILE}/facts/tasks", headers=outsider).json()["data"] == []
+    assert client.delete(f"{MOBILE}/devices/{device['device_id']}", headers=owner).status_code == 200
+    assert client.get(route, headers=auth).status_code == 401
+
+
+def test_fact_snapshots_keep_stale_and_missing_data_explicit(instance, monkeypatch):
+    from src.modules.mobile import fact_snapshots
+
+    client, sessions = instance
+    _, device = _renewable_grant(client, sessions)
+    auth = _bearer(device["access_token"])
+    with sessions() as db:
+        db.add_all([Stock(symbol="SAME", market="CN", name="CN quote"), Stock(symbol="SAME", market="US", name="US quote")])
+        db.commit()
+    monkeypatch.setattr(fact_snapshots, "md_quote_rows", lambda symbols, market: [{
+        "symbol": "SAME", "market": "CN", "current_price": 32.5,
+        "quote_date": "2026-10-01", "change_pct": 3, "source": "fixture-book",
+    }] if market == "CN" else [])
+
+    route = f"{MOBILE}/facts/tasks/{uuid4()}"
+    assert client.put(route, headers=auth, json={"phase": "intraday"}).status_code == 200
+    snapshot = client.get(route, headers=auth).json()["data"]["result"]
+    assert snapshot["phase"] == "intraday" and snapshot["state"] == "partial"
+    by_market = {row["target"]["market"]: row for row in snapshot["observations"]}
+    assert by_market["CN"]["quote"]["source"] == "fixture-book"
+    assert by_market["CN"]["quote"]["date"] == "2026-10-01"
+    assert by_market["US"]["quote"] is None
+    invalid = f"{MOBILE}/facts/tasks/{uuid4()}"
+    assert client.put(invalid, headers=auth, json={
+        "phase": "postmarket", "target": {"market": "HK", "symbol": "SAME"},
+    }).status_code == 404
+    assert client.get(invalid, headers=auth).status_code == 404
+    snapshot = fact_snapshots._postmarket({"accounts": [{"positions": [
+        {"market": "CN", "symbol": "SAME", "name": "CN quote", "daily_pnl": 8.0},
+        {"market": "US", "symbol": "SAME", "name": "US quote", "daily_pnl": None},
+    ]}], "total": {"total_daily_pnl": 8.0}}, None)
+    assert snapshot.state == "partial"
+    assert snapshot.total_daily_pnl.value is None
+    assert [item.daily_pnl.value for item in snapshot.contributions] == [8.0, None]
 
 
 def test_screening_is_numeric_and_watchlist_add_is_explicit_and_idempotent(instance, monkeypatch):

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from src.modules.mobile.alerts import create_alert_router
 from src.modules.mobile.disclosures import create_disclosures_router
+from src.modules.mobile.fact_tasks import create_fact_tasks_router
 from src.modules.mobile.diagnostics import create_diagnostics_router
 from src.modules.mobile.portfolio_history import PortfolioLookback, build_portfolio_lookback
 from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
@@ -359,7 +360,7 @@ def _require_active_device(device: MobileDevice | None, now: int) -> MobileDevic
     return device
 
 
-def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session, scope: str) -> MobileDevice:
+def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session, *scopes: str) -> MobileDevice:
     token = credentials.credentials if credentials else ""
     if not re.fullmatch(r"pwmob_[A-Za-z0-9_-]{43}", token):
         raise _invalid_device()
@@ -367,7 +368,7 @@ def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session
     device = _require_active_device(db.scalar(select(MobileDevice).where(MobileDevice.token_hash == _digest(token))), now)
     if device.access_expires_at is not None and device.access_expires_at <= now:
         raise _expired_device()
-    if scope not in device.scope.split():
+    if not set(scopes).issubset(device.scope.split()):
         raise api_error(403, "mobile_scope_required", "请重新连接以授权此功能。", headers=_NO_STORE)
     return device
 
@@ -516,12 +517,16 @@ def create_router(
     def require_symbol_device(credentials: Bearer, db: DB) -> MobileDevice:
         return _verify_device(credentials, db, _WATCHLIST_SCOPE)
 
+    def require_fact_task_device(credentials: Bearer, db: DB) -> MobileDevice:
+        return _verify_device(credentials, db, _WATCHLIST_SCOPE, _PORTFOLIO_SCOPE)
+
     def require_watchlist_add(credentials: Bearer, db: DB) -> MobileDevice:
         return _verify_device(credentials, db, _WATCHLIST_ADD_SCOPE)
 
     router.include_router(create_screening_router(require_symbol_device, require_watchlist_add))
     router.include_router(create_symbol_facts_router(require_symbol_device))
     router.include_router(create_disclosures_router(require_symbol_device))
+    router.include_router(create_fact_tasks_router(require_fact_task_device, get_portfolio_summary))
     router.include_router(create_diagnostics_router(require_diagnostics_device))
     router.include_router(phone)
     router.include_router(create_alert_router(require_alert_device))

@@ -56,18 +56,22 @@ def _finite(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value)
 
 
-def _quote(stock: Stock) -> QuoteSnapshot | None:
-    rows = md_quote_rows([stock.symbol], stock.market)
-    raw = next((row for row in rows if row["symbol"] == stock.symbol and row["market"] == stock.market), None)
+def quote_snapshot(market: str, raw: dict | None) -> QuoteSnapshot | None:
     if raw is None or not _finite(raw.get("current_price")):
         return None
-    fields = assistant_quote_fields(stock.market, raw)
+    fields = assistant_quote_fields(market, raw)
     change = fields["change_pct"]
     return QuoteSnapshot(
         price=raw["current_price"], change_pct=change if _finite(change) else None,
         source=raw.get("source") or None, date=fields["quote_date"],
         source_timestamp=fields["source_timestamp"], freshness=fields["freshness"],
     )
+
+
+def _quote(stock: Stock) -> QuoteSnapshot | None:
+    rows = md_quote_rows([stock.symbol], stock.market)
+    raw = next((row for row in rows if row["symbol"] == stock.symbol and row["market"] == stock.market), None)
+    return quote_snapshot(stock.market, raw)
 
 
 def create_symbol_facts_router(require_device) -> APIRouter:
