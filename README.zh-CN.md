@@ -157,11 +157,11 @@ docker compose up -d
 
 ## 为移动版升级 PanWatch
 
-原生 App 需要可通过 HTTPS 访问的兼容服务。首个兼容版本是 [0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0)。
+原生 App 通过 HTTPS 连接你的 PanWatch 服务。要体验移动版公测的研判、持仓指标、价格盯盘和机会筛选，请升级到 [PanWatch 0.23.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.23.0) 或更新版本。[0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0) 起支持基础移动连接。
 
 1. 备份现有数据卷或挂载目录，并继续把它挂载到 `/app/data`。
-2. 使用 Docker Compose 时，将现有服务的镜像改为 `sunxiao0721/panwatch:0.21.0`，再执行 `docker compose pull panwatch` 和 `docker compose up -d panwatch`。使用 `docker run` 时，拉取该镜像，用原有环境变量、端口及数据挂载重建容器。
-3. 登录 Web 核对持仓。在 App 重新检测原有 HTTPS 地址并用原账号登录，或在 Web 打开 **设置 → 连接手机**，生成新的二维码并批准这台手机。
+2. 使用 Docker Compose 时，将现有服务的镜像改为 `sunxiao0721/panwatch:0.23.0`，再执行 `docker compose pull panwatch` 和 `docker compose up -d panwatch`。使用 `docker run` 时，拉取该镜像，用原有环境变量、端口及数据挂载重建容器。
+3. 登录 Web 核对持仓。在 App 重新检测原有 HTTPS 地址并用原账号登录，或在 Web 打开 **设置 → 连接手机**，生成新的二维码并批准这台手机。重新连接并批准所需权限，即可使用新开放的功能。
 
 ### Android 封闭测试
 
