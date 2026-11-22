@@ -1,5 +1,9 @@
 from datetime import date, timedelta
 
+import pytest
+
+from marketdata import MarketData, StaticConfigProvider
+from marketdata.ports import SourceConfig
 import marketdata.vendors.events as ev
 from marketdata.symbol import Symbol
 from marketdata.types import EventItem
@@ -76,3 +80,21 @@ def test_events_parses_and_filters(monkeypatch):
 def test_events_empty(monkeypatch):
     monkeypatch.setattr(ev, "market_get", lambda *a, **k: {"success": True, "data": {"list": []}})
     assert ev.EventsVendor().fetch([Symbol.parse("600519")], {}) == []
+
+
+@pytest.mark.parametrize(
+    ("payload", "available"),
+    [
+        ({"success": 1, "data": {"list": []}}, True),
+        ({"success": 0}, False),
+        ({"success": 1, "data": {}}, False),
+        (None, False),
+    ],
+)
+def test_events_client_distinguishes_empty_from_failed_source(monkeypatch, payload, available):
+    monkeypatch.setattr(ev, "market_get", lambda *a, **k: payload)
+    config = StaticConfigProvider({"events": [SourceConfig(vendor="eastmoney", priority=1)]})
+    client = MarketData(config=config)
+
+    assert client.events_with_status(["600519"]) == ([], available)
+    assert client.events(["600519"]) == []

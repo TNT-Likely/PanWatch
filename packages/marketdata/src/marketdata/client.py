@@ -214,7 +214,7 @@ class MarketData:
     def events_with_status(self, symbols: list[str], *, market: str = "CN", since_days: int = 7) -> tuple[list[EventItem], bool]:
         req = Request(symbols=tuple(symbols), market=market, since_hours=since_days * 24,
                       extra=(("since_days", since_days),))
-        resp = self._events_engine.fetch(req, cache_ttl_sec=0)
+        resp = self._events_engine.fetch(req, cache_ttl_sec=0, min_count=0)
         return resp.data or [], resp.ok
 
     def flash_news(self, *, market: str = "CN", limit: int = 50, keyword: str | None = None) -> list[FlashNews]:
