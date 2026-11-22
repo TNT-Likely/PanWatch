@@ -24,6 +24,7 @@ from src.modules.mobile.alerts import create_alert_router
 from src.modules.mobile.diagnostics import create_diagnostics_router
 from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
 from src.modules.mobile.push import create_push_router, retire_device_push
+from src.modules.mobile.symbol_facts import create_symbol_facts_router
 from src.modules.mobile.schemas import (
     Capabilities,
     DeviceGrant,
@@ -490,6 +491,10 @@ def create_router(
     def require_diagnostics_device(credentials: Bearer, db: DB) -> MobileDevice:
         return _verify_device(credentials, db, _DIAGNOSTICS_SCOPE)
 
+    def require_symbol_device(credentials: Bearer, db: DB) -> MobileDevice:
+        return _verify_device(credentials, db, _WATCHLIST_SCOPE)
+
+    router.include_router(create_symbol_facts_router(require_symbol_device))
     router.include_router(create_diagnostics_router(require_diagnostics_device))
     router.include_router(phone)
     router.include_router(create_alert_router(require_alert_device))

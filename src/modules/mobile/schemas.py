@@ -22,6 +22,7 @@ class Capabilities(BaseModel):
     password_login: bool
     portfolio_read: bool = True
     portfolio_metrics: bool = True
+    symbol_facts: bool = True
     diagnostics_read: bool = True
     session_refresh: bool = True
     watchlist_read: bool = True
@@ -89,6 +90,7 @@ class DeviceGrant(BaseModel):
     watchlist_read: bool = False
     alerts_manage: bool = False
     portfolio_metrics: bool = True
+    symbol_facts: bool = True
     diagnostics_read: bool = False
 
 

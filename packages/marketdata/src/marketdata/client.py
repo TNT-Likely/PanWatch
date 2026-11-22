@@ -144,10 +144,14 @@ class MarketData:
     def klines(self, symbol: str, *, market: str, days: int = 120, min_count: int = 1) -> list:
         """按 priority 主备取日K(不足则试下一个,全不足取最长)。返回 list[Bar]。
         不在包内缓存(cache_ttl_sec=0);宿主自行缓存。"""
+        bars, _ = self.klines_with_vendor(symbol, market=market, days=days, min_count=min_count)
+        return bars
+
+    def klines_with_vendor(self, symbol: str, *, market: str, days: int = 120, min_count: int = 1) -> tuple[list, str]:
         req = Request(symbols=(symbol,), market=market, timeframe="day", limit=days,
                       extra=(("days", days),))
         resp = self._kline_engine.fetch(req, min_count=min_count, cache_ttl_sec=0)
-        return resp.data or []
+        return resp.data or [], resp.vendor
 
     def quotes(self, symbols: list[str | Symbol], *, market: str | None = None) -> list[Quote]:
         """批量报价。symbols 可跨市场:未显式给 market 时按代码自动识别并分组。"""

@@ -103,7 +103,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
-        "portfolio_metrics": True, "diagnostics_read": True,
+        "portfolio_metrics": True, "symbol_facts": True, "diagnostics_read": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -632,3 +632,52 @@ def test_diagnostics_preserve_explicit_scope_and_hide_provider_internals(instanc
     assert rotated["diagnostics_read"] is True
     assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
     assert client.post(path, headers=_bearer(rotated["access_token"])).status_code == 401
+
+
+def test_symbol_facts_keep_market_identity_and_aggregate_real_bar_periods(instance, monkeypatch):
+    from datetime import date, timedelta
+    from marketdata.types import Bar
+    from src.modules.mobile import symbol_facts
+
+    client, sessions = instance
+    _, current = _renewable_grant(client, sessions)
+    with sessions() as db:
+        db.add_all([
+            Stock(symbol="SAME", market="US", name="US security"),
+            Stock(symbol="SAME", market="CN", name="CN security"),
+        ])
+        db.commit()
+
+    def quote_rows(symbols, market):
+        assert symbols == ["SAME"]
+        return [
+            {"symbol": "SAME", "market": "US", "current_price": 125, "source": "us-fixture", "quote_date": "2026-09-24", "legacy_advice": "fixture advice"},
+            {"symbol": "SAME", "market": "CN", "current_price": 18, "source": "cn-fixture", "quote_date": "2026-09-24"},
+        ]
+
+    def bars(symbol, *, market, days):
+        price = 100 if market == "US" else 10
+        data = [
+            Bar((date(2026, 9, 1) + timedelta(days=index)).isoformat(), price, price + index, price + index + 1, price - 1)
+            for index in range(24)
+        ]
+        return data, f"{market.lower()}-bars"
+
+    monkeypatch.setattr(symbol_facts, "md_quote_rows", quote_rows)
+    monkeypatch.setattr(symbol_facts, "get_market_data", lambda: SimpleNamespace(klines_with_vendor=bars))
+    device = _bearer(current["access_token"])
+    path = f"{MOBILE}/symbols"
+    assert client.get(f"{path}/US/SAME").status_code == 401
+    assert client.get(f"{path}/HK/SAME", headers=device).status_code == 404
+    assert client.get(f"{path}/US/SAME?interval=hour", headers=device).status_code == 422
+    us = client.get(f"{path}/US/SAME", headers=device)
+    assert us.status_code == 200 and "fixture advice" not in us.text
+    result = us.json()["data"]
+    assert result["target"]["market"] == "US" and result["currency"] == "USD"
+    assert result["quote"]["price"] == 125 and result["quote"]["source"] == "us-fixture"
+    assert result["bars_source"] == "us-bars" and len(result["bars"]) == 24
+    assert result["sma20_daily"] == 113.5
+    cn = client.get(f"{path}/CN/SAME?interval=1w", headers=device).json()["data"]
+    assert cn["target"]["market"] == "CN" and cn["currency"] == "CNY"
+    assert cn["quote"]["price"] == 18 and cn["bars_source"] == "cn-bars"
+    assert len(cn["bars"]) == 4 and cn["bars"][-1]["close"] == 33

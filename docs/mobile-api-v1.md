@@ -101,3 +101,5 @@ Clients may request `read_diagnostics: true` with a renewable connection when `d
 | --- | --- |
 | `GET /diagnostics` | List the scheduled workflows visible in Web and recent provider-level source telemetry. The view projects workflow status, timestamps and aggregate source statistics. |
 | `POST /diagnostics/sources/{id}/test` | Test an enabled configured source and return its success flag, elapsed time and observed timestamp. |
+
+`GET /symbols/{market}/{symbol}?interval=1d` reads an existing symbol using its market and code. It requires watchlist read access. The response identifies the vendor observations, currency, quote freshness, daily moving average and OHLC points for the selected interval. Weekly and monthly points use the same calendar aggregation as Web. A missing observation remains null or an empty series.
