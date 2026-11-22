@@ -66,7 +66,7 @@ class Engine:
                 continue
 
             latency = int((time.monotonic() - t0) * 1000)
-            if data:
+            if data or (min_count == 0 and data is not None):
                 self.metrics.record(vendor=src.vendor, datatype=self.datatype, market=market,
                                     ok=True, count=len(data), latency_ms=latency)
                 resp = Response(ok=True, data=data, vendor=src.vendor, latency_ms=latency)

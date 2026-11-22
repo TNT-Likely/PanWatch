@@ -160,10 +160,13 @@ class EventsVendor(_EventsVendorBase):
             verify=False,  # 对齐原 EastMoneyEventsCollector 的 verify_ssl=False(东财 ann 端点 SSL 关闭)
             log_label="事件",
         )
-        if not data or not data.get("success"):
-            return []
+        if not isinstance(data, dict) or not data.get("success"):
+            raise RuntimeError("Announcement provider did not return a successful response")
 
-        items = data.get("data", {}).get("list", []) or []
+        payload = data.get("data")
+        items = payload.get("list") if isinstance(payload, dict) else None
+        if not isinstance(items, list):
+            raise RuntimeError("Announcement provider returned an invalid list")
         result: list[EventItem] = []
 
         for item in items:
