@@ -161,11 +161,11 @@ If you do not need browser features such as screenshots, set `PLAYWRIGHT_SKIP_BR
 
 ## Upgrade PanWatch for the mobile app
 
-The native app needs a compatible PanWatch server reachable over HTTPS. The first compatible server release is [0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0).
+The native app connects to your PanWatch server over HTTPS. For the briefing, holdings metrics, price alerts and opportunity screening in the mobile beta, upgrade to [PanWatch 0.23.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.23.0) or later. Basic mobile connections are supported from [0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0).
 
 1. Back up your existing data mount and keep it mounted at `/app/data`.
-2. For Docker Compose, set the existing service image to `sunxiao0721/panwatch:0.21.0`, then run `docker compose pull panwatch` and `docker compose up -d panwatch`. For `docker run`, pull that image and recreate the container with your existing environment, ports, and data mount.
-3. Sign in on the web and confirm your holdings are present. In the app, recheck the same HTTPS address and sign in with your existing server credentials, or open **Settings → Connect a phone** on the web to create and approve a new QR connection.
+2. For Docker Compose, set the existing service image to `sunxiao0721/panwatch:0.23.0`, then run `docker compose pull panwatch` and `docker compose up -d panwatch`. For `docker run`, pull that image and recreate the container with your existing environment, ports, and data mount.
+3. Sign in on the web and confirm your holdings are present. In the app, recheck the same HTTPS address and sign in with your existing server credentials, or open **Settings → Connect a phone** on the web to create and approve a new QR connection. Reconnect and grant the requested permissions to use newly available features.
 
 ### Android closed testing
 
