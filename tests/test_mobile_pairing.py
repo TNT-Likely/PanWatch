@@ -17,7 +17,9 @@ from src.modules.mobile import api as mobile, push
 from src.modules.portfolio.api import accounts
 from src.platform.marketdata import marketdata_client
 from src.platform.persistence.database import Base, get_db
-from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal, _m144_mobile_push_routes
+from src.platform.persistence.migrations import (
+    _m141_mobile_device_pairing, _m142_mobile_device_renewal, _m144_mobile_push_routes, _m148_mobile_push_test_minute,
+)
 from src.platform.persistence.models import (
     Account, AgentConfig, AgentRun, DataSource, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position,
     PriceAlertDelivery, PriceAlertHit, PriceAlertRule, Stock,
@@ -470,7 +472,9 @@ def test_push_route_owns_opaque_event_and_retires_with_device(instance, monkeypa
     _, other = _renewable_grant(client, sessions, manage_alerts=True)
     device = _bearer(grant["access_token"])
     path = f"{MOBILE}/push"
-    assert client.get(path, headers=device).json()["data"] == {"available": False, "route_id": None}
+    assert client.get(path, headers=device).json()["data"] == {
+        "available": False, "route_id": None, "test_available": False,
+    }
 
     monkeypatch.setenv("PANWATCH_MOBILE_PUSH_GATEWAY_URL", "https://push.example")
     monkeypatch.setenv("PANWATCH_MOBILE_PUSH_ENROLLMENT_KEY", "k" * 43)
@@ -552,6 +556,86 @@ def test_push_route_owns_opaque_event_and_retires_with_device(instance, monkeypa
         assert all(row.submit_token is None and row.withdraw_after is None for row in db.query(MobilePushRoute))
 
 
+def test_push_test_is_device_scoped_and_idempotent_across_route_changes(instance, monkeypatch):
+    client, sessions = instance
+    owner, grant = _renewable_grant(client, sessions, manage_alerts=True)
+    _, other = _renewable_grant(client, sessions, manage_alerts=True)
+    _, read_only = _renewable_grant(client, sessions)
+    device = _bearer(grant["access_token"])
+    second = _bearer(other["access_token"])
+    path = f"{MOBILE}/push"
+    registration = {"token": "synthetic-device-token", "environment": "sandbox"}
+    clock = [int(push.time.time()) // 60 * 60 + 1]
+    monkeypatch.setattr(push, "time", SimpleNamespace(time=lambda: clock[0]))
+    network = push.Gateway("https://push.example", "synthetic-enrollment-fixture")
+    gateway_enabled = False
+    monkeypatch.setattr(push, "configured_gateway", lambda: network if gateway_enabled else None)
+    registered = {}
+    sent = []
+    known_events = set()
+    old_gateway = False
+
+    def gateway_request(self, method, endpoint, bearer, body):
+        assert self is network and method == "POST"
+        if endpoint == "/v1/routes":
+            route_id = str(uuid4())
+            submit_token = f"{len(registered) + 1:043d}"
+            registered[route_id] = submit_token
+            return {"route_id": route_id, "submit_token": submit_token}
+        assert endpoint == "/v1/test-deliveries" and set(body) == {"route_id", "event_id"}
+        assert bearer == registered[body["route_id"]]
+        if old_gateway:
+            request = httpx.Request("POST", f"https://push.example{endpoint}")
+            raise httpx.HTTPStatusError("unsupported", request=request, response=httpx.Response(404, request=request))
+        sent.append(body)
+        key = (body["route_id"], body["event_id"])
+        state = "accepted" if key in known_events else "queued"
+        known_events.add(key)
+        return {"state": state}
+
+    monkeypatch.setattr(push.Gateway, "request", gateway_request)
+
+    assert client.post(f"{path}/test").status_code == 401
+    assert client.post(f"{path}/test", headers=_bearer(read_only["access_token"])).status_code == 403
+    assert client.post(f"{path}/test", headers=device).status_code == 503
+    gateway_enabled = True
+    first = client.put(path, headers=device, json=registration).json()["data"]
+    assert first["available"] is True and first["test_available"] is True
+    assert client.get(path, headers=device).json()["data"]["test_available"] is True
+    assert client.get(path, headers=second).json()["data"]["test_available"] is False
+    assert client.post(f"{path}/test", headers=second).status_code == 409
+    assert client.post(f"{path}/test", headers=device, json={"route_id": str(uuid4())}).status_code == 400
+    assert client.post(f"{path}/test", headers=device, params={"route_id": str(uuid4())}).status_code == 400
+    assert not sent
+
+    queued = client.post(f"{path}/test", headers=device)
+    assert queued.status_code == 200 and queued.json()["data"] == {"state": "queued"}
+    assert queued.headers["Cache-Control"] == "no-store"
+    accepted = client.post(f"{path}/test", headers=device)
+    assert accepted.status_code == 200 and accepted.json()["data"] == {"state": "accepted"}
+    assert sent[0] == sent[1]
+    assert sent[0]["route_id"] == first["route_id"]
+    other_route = client.put(path, headers=second, json=registration).json()["data"]["route_id"]
+    assert client.post(f"{path}/test", headers=second).json()["data"] == {"state": "queued"}
+    assert sent[2]["route_id"] == other_route and sent[2]["event_id"] != sent[1]["event_id"]
+
+    assert client.delete(path, headers=device).json()["data"]["test_available"] is False
+    new_route = client.put(path, headers=device, json=registration).json()["data"]["route_id"]
+    assert new_route != first["route_id"]
+    limited = client.post(f"{path}/test", headers=device)
+    assert limited.status_code == 429 and limited.headers["Retry-After"] == "59"
+    assert len(sent) == 3
+    clock[0] += 60
+    assert client.post(f"{path}/test", headers=device).json()["data"] == {"state": "queued"}
+    assert sent[3]["route_id"] == new_route and sent[3]["event_id"] != sent[1]["event_id"]
+    old_gateway = True
+    unavailable = client.post(f"{path}/test", headers=device)
+    assert unavailable.status_code == 503 and unavailable.json()["error_code"] == "mobile_push_test_unavailable"
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.post(f"{path}/test", headers=device).status_code == 401
+    assert len(sent) == 4
+
+
 def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'older.db'}")
     with engine.begin() as conn:
@@ -574,6 +658,14 @@ def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
         conn.execute(text("INSERT INTO price_alert_deliveries VALUES (1, 'web-event')"))
         _m144_mobile_push_routes(conn)
         _m144_mobile_push_routes(conn)
+        conn.execute(text("""
+            INSERT INTO mobile_push_routes (id, device_id, instance_id, withdraw_attempts)
+            VALUES ('legacy-route', 'device', 'instance', 0)
+        """))
+        _m148_mobile_push_test_minute(conn)
+        _m148_mobile_push_test_minute(conn)
+        route = conn.execute(text("SELECT id, test_minute FROM mobile_push_routes")).one()
+        assert tuple(route) == ("legacy-route", None)
         channel = conn.execute(text("SELECT event_id, mobile_push_route_id FROM price_alert_deliveries WHERE id = 1")).one()
         assert tuple(channel) == ("web-event", None)
         assert conn.scalar(text("SELECT name FROM accounts WHERE id = 1")) == "Legacy holding account"

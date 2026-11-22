@@ -1509,6 +1509,7 @@ class MobilePushRoute(Base):
     retired_at = Column(Integer, nullable=True)
     withdraw_after = Column(Integer, nullable=True, index=True)
     withdraw_attempts = Column(Integer, nullable=False, default=0)
+    test_minute = Column(Integer, nullable=True)
 
 
 class PersonalAccessToken(Base):
