@@ -103,3 +103,5 @@ Clients may request `read_diagnostics: true` with a renewable connection when `d
 | `POST /diagnostics/sources/{id}/test` | Test an enabled configured source and return its success flag, elapsed time and observed timestamp. |
 
 `GET /symbols/{market}/{symbol}?interval=1d` reads an existing symbol using its market and code. It requires watchlist read access. The response identifies the vendor observations, currency, quote freshness, daily moving average and OHLC points for the selected interval. Weekly and monthly points use the same calendar aggregation as Web. A missing observation remains null or an empty series.
+
+`GET /portfolio/metrics/history` optionally takes an `account_id`. It revisits current positions using dated closing prices, the instance summary's exchange rates held fixed, and the current recorded cash. Days missing a position or its conversion rate have a null value and a coverage count. The view is a current-holdings estimate.

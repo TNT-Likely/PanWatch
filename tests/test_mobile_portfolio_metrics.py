@@ -44,3 +44,37 @@ def test_mobile_metrics_distinguish_empty_portfolio_and_unpriced_positions():
     assert missing.valuation == "unavailable"
     assert missing.today_pnl.value is None and missing.today_pnl.coverage == "unavailable"
     assert missing.unrealized_pnl.value is None and missing.accounts[0].available_assets == 200
+
+
+def test_current_holdings_lookback_uses_fixed_rates_and_preserves_missing_dates(monkeypatch):
+    from types import SimpleNamespace
+    from marketdata.types import Bar
+    from src.modules.mobile import portfolio_history
+
+    summary = {
+        "total": {"available_funds": 50},
+        "accounts": [{"positions": [
+            {"symbol": "SAME", "market": "CN", "quantity": 2, "exchange_rate": None},
+            {"symbol": "SAME", "market": "US", "quantity": 1, "exchange_rate": 7},
+        ]}],
+    }
+    expected = {
+        "CN": [Bar("2026-09-01", 100, 100, 100, 100), Bar("2026-09-02", 101, 101, 101, 101)],
+        "US": [Bar("2026-09-01", 10, 10, 10, 10)],
+    }
+
+    def fetch(symbol, *, market, days):
+        assert symbol == "SAME" and days == 35
+        return expected[market], market
+
+    monkeypatch.setattr(portfolio_history, "get_market_data", lambda: SimpleNamespace(klines_with_vendor=fetch))
+    data = portfolio_history.build_portfolio_lookback(summary).model_dump(mode="json")
+    assert data["basis"] == "current_holdings_fixed_fx" and data["currency"] == "CNY"
+    assert data["points"] == [
+        {"date": "2026-09-01", "assets": 320, "covered_positions": 2},
+        {"date": "2026-09-02", "assets": None, "covered_positions": 1},
+    ]
+    assert data["sources"] == ["CN", "US"]
+    summary["accounts"][0]["positions"][1]["exchange_rate"] = None
+    no_fx = portfolio_history.build_portfolio_lookback(summary)
+    assert no_fx.position_count == 2 and all(point.assets is None for point in no_fx.points)

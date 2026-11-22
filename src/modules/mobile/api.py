@@ -12,7 +12,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from src.modules.mobile.alerts import create_alert_router
 from src.modules.mobile.diagnostics import create_diagnostics_router
+from src.modules.mobile.portfolio_history import PortfolioLookback, build_portfolio_lookback
 from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
 from src.modules.mobile.push import create_push_router, retire_device_push
 from src.modules.mobile.symbol_facts import create_symbol_facts_router
@@ -478,6 +479,18 @@ def create_router(
     def portfolio_metrics(credentials: Bearer, db: DB) -> MobileResponse[PortfolioMetrics]:
         _verify_device(credentials, db, _PORTFOLIO_SCOPE)
         return MobileResponse(data=build_portfolio_metrics(get_portfolio_summary(db)))
+
+    @router.get("/portfolio/metrics/history")
+    def portfolio_history(
+        credentials: Bearer, db: DB, account_id: Annotated[int | None, Query(ge=1)] = None,
+    ) -> MobileResponse[PortfolioLookback]:
+        from src.modules.portfolio.api.accounts import get_portfolio_summary as account_summary
+
+        _verify_device(credentials, db, _PORTFOLIO_SCOPE)
+        summary = account_summary(account_id=account_id, include_quotes=False, db=db)
+        if account_id is not None and not summary["accounts"]:
+            raise api_error(404, "mobile_portfolio_account_not_found", "此账户不可用。")
+        return MobileResponse(data=build_portfolio_lookback(summary))
 
     @router.get("/symbols/watchlist")
     def watchlist(credentials: Bearer, db: DB) -> MobileResponse[list[WatchlistSymbol]]:
