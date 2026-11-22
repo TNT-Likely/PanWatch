@@ -224,6 +224,7 @@ class PriceAlertEngine:
                 "change_pct": quote.get("change_pct"),
                 "turnover": quote.get("turnover"),
                 "volume": quote.get("volume"),
+                "source": quote.get("source"),
             },
             "conditions": results,
             "group_op": op,

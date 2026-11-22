@@ -132,6 +132,7 @@ def create_alert_rule(
     repeat_mode: str = "repeat",
     expire_at: str | datetime | None = None,
     notify_channel_ids: list[int] | None = None,
+    mobile_request_id: str | None = None,
 ) -> PriceAlertRule:
     """Create one validated rule for both HTTP and assistant callers."""
     stock = db.query(Stock).filter(Stock.id == stock_id).first()
@@ -158,6 +159,7 @@ def create_alert_rule(
         repeat_mode=repeat,
         expire_at=parse_expire_at(expire_at),
         notify_channel_ids=validate_channel_ids(db, notify_channel_ids),
+        mobile_request_id=mobile_request_id,
     )
     db.add(row)
     db.commit()

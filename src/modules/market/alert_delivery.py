@@ -7,14 +7,16 @@ still receive a duplicate. Credentials are loaded only when sending.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import and_, or_, update
 
+from src.modules.mobile.push import mobile_routes, relay, withdraw_pending
 from src.platform.notifications.notifier import NotifierManager
 from src.platform.persistence.database import SessionLocal
-from src.platform.persistence.models import NotifyChannel, PriceAlertDelivery, PriceAlertHit
+from src.platform.persistence.models import MobileDevice, MobilePushRoute, NotifyChannel, PriceAlertDelivery, PriceAlertHit
 
 
 def now_utc():
@@ -24,9 +26,15 @@ def now_utc():
 def enqueue(db, hit, rule, title, content):
     """Called inside the hit + inbox transaction. Never commits or sends."""
     ids = list(dict.fromkeys(rule.notify_channel_ids or []))
-    if not ids:
+    if not ids and rule.mobile_request_id is None:
         ids = [c.id for c in db.query(NotifyChannel).filter_by(enabled=True, is_default=True).all()]
-    for channel_id in ids or [None]:
+    routes = mobile_routes(db)
+    for route in routes:
+        db.add(PriceAlertDelivery(
+            hit_id=hit.id, mobile_push_route_id=route.id, channel_key=f"mobile:{route.id}",
+            event_id=str(uuid4()), title="", content="", status="pending", next_attempt_at=now_utc(),
+        ))
+    for channel_id in ids or ([] if routes else [None]):
         key = str(channel_id) if channel_id is not None else "unconfigured"
         event_id = f"price-alert:{hit.id}:{key}:{uuid4().hex}"
         db.add(PriceAlertDelivery(
@@ -56,6 +64,18 @@ def update_hit_receipt(db, hit_id):
         hit.notify_error = "" if hit.notify_success else ",".join(sorted({r.error_code or r.status for r in rows if r.status != "delivered"}))
 
 
+def _mobile_route(db, row):
+    if row.mobile_push_route_id is None:
+        return None
+    route = db.get(MobilePushRoute, row.mobile_push_route_id)
+    if route is None or route.retired_at is not None or not route.submit_token or not route.gateway_route_id:
+        return None
+    device = db.get(MobileDevice, route.device_id)
+    if device is None or device.revoked_at is not None or device.expires_at <= int(time.time()):
+        return None
+    return route
+
+
 def retry_delivery(db, delivery_id):
     row = db.get(PriceAlertDelivery, delivery_id)
     if row is None:
@@ -63,7 +83,7 @@ def retry_delivery(db, delivery_id):
     if row.status not in {"retry", "failed", "blocked"}:
         raise ValueError("delivery_not_retryable")
     channel = db.get(NotifyChannel, row.channel_id) if row.channel_id is not None else None
-    if channel is None or not channel.enabled:
+    if (channel is None or not channel.enabled) and _mobile_route(db, row) is None:
         raise ValueError("delivery_channel_unavailable")
     # Conditional update prevents a manual retry from stealing an active lease.
     changed = db.execute(update(PriceAlertDelivery).where(
@@ -113,6 +133,14 @@ class AlertDeliveryWorker:
                 return None
             db.commit()
             db.refresh(row)
+            if row.mobile_push_route_id is not None:
+                route = _mobile_route(db, row)
+                return {
+                    "id": row.id, "hit_id": row.hit_id, "token": token, "channel_type": "mobile_push",
+                    "event_id": row.event_id, "gateway_route_id": route.gateway_route_id if route else None,
+                    "submit_token": route.submit_token if route else None,
+                    "available": bool(route and db.get(PriceAlertHit, row.hit_id)),
+                }
             channel = db.get(NotifyChannel, row.channel_id) if row.channel_id is not None else None
             return {"id": row.id, "hit_id": row.hit_id, "token": token,
                     "title": row.title, "content": row.content,
@@ -146,6 +174,11 @@ class AlertDeliveryWorker:
                 break
             if not claim["available"]:
                 self.finish(claim, error="channel_unavailable")
+            elif claim["channel_type"] == "mobile_push":
+                error = await asyncio.to_thread(
+                    relay, claim["event_id"], claim["gateway_route_id"], claim["submit_token"],
+                )
+                self.finish(claim, ok=not error, error=error)
             else:
                 manager = NotifierManager()
                 manager.add_channel(claim["channel_type"], claim["config"])
@@ -158,4 +191,5 @@ class AlertDeliveryWorker:
                     self.finish(claim, error="channel_send_failed")
                 # Cancellation/process death leaves the lease for recovery.
             processed += 1
+        await asyncio.to_thread(withdraw_pending, self.session_factory)
         return {"processed": processed}

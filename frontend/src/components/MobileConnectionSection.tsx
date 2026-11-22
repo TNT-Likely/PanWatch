@@ -25,6 +25,7 @@ type PairingStatus = {
   platform: 'ios' | 'android' | null
   verification_code: string | null
   renewable?: boolean
+  manage_alerts?: boolean
 }
 type Device = {
   id: string
@@ -195,7 +196,7 @@ export default function MobileConnectionSection() {
             <div className="space-y-2 rounded-lg border border-border p-3">
               <p className="break-words text-sm font-medium">{review.device_name}</p>
               <p className="text-xs text-muted-foreground">
-                {t(review.renewable ? 'mobile.renewableAccess' : 'mobile.portfolioAccess')}
+                {t(review.manage_alerts ? 'mobile.alertAccess' : review.renewable ? 'mobile.renewableAccess' : 'mobile.portfolioAccess')}
               </p>
               <p className="font-mono text-lg tracking-widest">{review.verification_code}</p>
               <div className="flex flex-wrap gap-2">

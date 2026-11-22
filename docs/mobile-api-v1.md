@@ -59,6 +59,33 @@ Use a fresh random 32-byte lowercase hex `Idempotency-Key` for each rotation. Pe
 
 Refresh credentials are accepted only at the refresh route. Access credentials are accepted only at the permitted read endpoints. The watchlist returns 403 `mobile_scope_required` for a current portfolio-only grant. Validate that the returned device, instance, and HTTPS origin match before saving a rotated grant.
 
+## Price alerts and history
+
+An updated client can request `manage_alerts: true` alongside `renewable: true` when the service advertises `alerts_manage`. The Web approval lists that scope. The resulting `alerts_manage` flag stays with that device through renewal. Existing grants retain their scope. Revocation blocks alert and event requests.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /alerts` | Read the instance's rules and condition groups with the associated market and symbol. |
+| `POST /alerts` | Create a single price threshold for an existing watchlist symbol. Send `market`, `symbol`, `comparison` (`<` or `>`), `price`, and a UUID `request_id`. Reuse the request ID when retrying an ambiguous response. |
+| `POST /alerts/{id}/enabled` | Set `enabled` explicitly. The existing price and compound conditions are preserved. |
+| `GET /events` | Read up to 50 recent persisted hits by default. A `limit` from 1 to 200 is supported. |
+| `GET /events/{id}` | Read a specific hit by its instance-local event ID. The response includes the triggering rule, market, symbol, UTC timestamp and the stored observation and condition results. |
+
+Rules created from the mobile client do not inherit the Web user's default outbound channels. Explicitly selected channels in Web settings continue to apply. The history endpoint uses the actual stored trigger and is available independently of push registration.
+
+## Native device notifications
+
+The same alert grant can manage its own push route. An instance enables push by configuring the HTTPS origin in `PANWATCH_MOBILE_PUSH_GATEWAY_URL` and the enrollment key issued for its instance ID in `PANWATCH_MOBILE_PUSH_ENROLLMENT_KEY`. The key belongs on the self-hosted server. The native client requests OS permission before sending a provider token.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /push` | Read whether the gateway is configured and the current device's opaque route ID, if enrolled. |
+| `PUT /push` | Register or rotate a native `token` for the current device. Send the provider `environment` from the signed application. |
+| `DELETE /push` | Disable the device's route immediately for new events and schedule withdrawal from the gateway. |
+| `GET /push/events/{id}?route_id={route}` | Read the hit for an opaque notification ID through the original device and current route. Retired routes are denied. |
+
+The gateway receives the registration token and opaque identifiers. Notification delivery sends only a route ID and event ID. When a delivery is recorded for the current device, event responses include `push_delivery` with `pending`, `submitted` or `failed`. `submitted` records platform acceptance. The handset reads alert content from the paired instance.
+
 ## Portfolio amounts
 
 The total uses the same CNY calculation as the Web view. Holdings use the market currency and include market, symbol, name, quantity and available market value. Entries from separate enabled accounts can share a market and symbol. The mobile response does not expose account names or cost prices.

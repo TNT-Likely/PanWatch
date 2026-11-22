@@ -1,5 +1,8 @@
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
@@ -7,11 +10,15 @@ from sqlalchemy.orm import sessionmaker
 
 from src.bootstrap.application import app
 from src.modules.administration.api import auth, settings
-from src.modules.mobile import api as mobile
+from src.modules.market import alert_delivery, price_alert_engine
+from src.modules.mobile import api as mobile, push
 from src.modules.portfolio.api import accounts
 from src.platform.persistence.database import Base, get_db
-from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal
-from src.platform.persistence.models import Account, MobileDevice, MobilePairing, Position, Stock
+from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal, _m144_mobile_push_routes
+from src.platform.persistence.models import (
+    Account, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position, PriceAlertDelivery, PriceAlertRule, Stock,
+)
+from src.platform.scheduling import trading_calendar
 
 MOBILE = "/api/mobile/v1"
 ORIGIN = "https://test-panwatch.example"
@@ -53,7 +60,7 @@ def _start(client, owner):
     return response.json()["data"]
 
 
-def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False):
+def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=False):
     body = {
         "challenge": qr["challenge"],
         "claim_key": claim_key,
@@ -62,6 +69,8 @@ def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False):
     }
     if renewable:
         body["renewable"] = True
+    if manage_alerts:
+        body["manage_alerts"] = True
     return client.post(f"{MOBILE}/pairings/{qr['pairing_id']}/claim", json=body)
 
 
@@ -69,13 +78,14 @@ def _exchange(client, root, claim_key=PHONE_KEY):
     return client.post(f"{root}/exchange", headers=_bearer(claim_key))
 
 
-def _approve(client, owner, root, qr, *, renewable=False):
-    response = _claim(client, qr, renewable=renewable)
+def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False):
+    response = _claim(client, qr, renewable=renewable, manage_alerts=manage_alerts)
     assert response.status_code == 200, response.text
     code = response.json()["data"]["verification_code"]
     review = client.get(root, headers=owner).json()["data"]
     assert review["verification_code"] == code
     assert review["renewable"] is renewable
+    assert review["manage_alerts"] is manage_alerts
     response = client.post(f"{root}/decision", headers=owner, json={
         "decision": "approve", "verification_code": code,
     })
@@ -87,7 +97,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
     assert client.get(f"{MOBILE}/capabilities").json()["data"] == {
         "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
-        "session_refresh": True, "watchlist_read": True,
+        "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -284,11 +294,11 @@ def test_read_only_portfolio_reports_partial_valuation_and_refreshes_real_positi
     assert client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]["total_assets"] == 80
 
 
-def _renewable_grant(client, sessions):
+def _renewable_grant(client, sessions, *, manage_alerts=False):
     owner = _owner(sessions)
     qr = _start(client, owner)
     root = f"{MOBILE}/pairings/{qr['pairing_id']}"
-    _approve(client, owner, root, qr, renewable=True)
+    _approve(client, owner, root, qr, renewable=True, manage_alerts=manage_alerts)
     return owner, _exchange(client, root).json()["data"]
 
 
@@ -365,6 +375,156 @@ def test_password_grant_reads_watchlist_in_web_order_without_account_fields(inst
     assert client.post(path, headers=device, json={"symbol": "NEW", "market": "US"}).status_code == 405
 
 
+def test_mobile_alerts_replay_real_engine_and_keep_web_rules_and_channels(instance, monkeypatch):
+    client, sessions = instance
+    _, old = _renewable_grant(client, sessions)
+    assert client.get(f"{MOBILE}/alerts", headers=_bearer(old["access_token"])).status_code == 403
+    owner, grant = _renewable_grant(client, sessions, manage_alerts=True)
+    assert grant["alerts_manage"] is True
+    device = _bearer(grant["access_token"])
+    with sessions() as db:
+        stock = Stock(symbol="PWTST", market="CN", name="QA fixture")
+        db.add(stock)
+        db.add(NotifyChannel(name="Existing Web channel", type="webhook", config={}, enabled=True, is_default=True))
+        db.flush()
+        group = {"op": "or", "items": [
+            {"type": "price", "op": ">", "value": 200},
+            {"type": "volume", "op": ">=", "value": 2000},
+        ]}
+        original = PriceAlertRule(stock_id=stock.id, name="Web multi-condition", condition_group=group, enabled=True)
+        db.add(original)
+        db.commit()
+        web_rule_id = original.id
+
+    reply = client.post(f"{MOBILE}/alerts/{web_rule_id}/enabled", headers=device, json={"enabled": False})
+    assert reply.status_code == 200
+    assert reply.json()["data"]["condition_group"] == group
+    body = {"market": "CN", "symbol": "PWTST", "comparison": "<", "price": 100, "request_id": str(uuid4())}
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        replies = list(executor.map(lambda _: client.post(f"{MOBILE}/alerts", headers=device, json=body), range(2)))
+    assert [r.status_code for r in replies] == [201, 201]
+    saved = replies[0].json()["data"]
+    assert saved == replies[1].json()["data"]
+    assert client.post(f"{MOBILE}/alerts", headers=device, json={**body, "price": 101}).status_code == 409
+    assert client.get("/api/price-alerts", headers=device).status_code == 401
+
+    engine = price_alert_engine.PriceAlertEngine()
+    monkeypatch.setattr(price_alert_engine, "SessionLocal", sessions)
+    monkeypatch.setattr(price_alert_engine, "quote_date_is_current", lambda market, quote: True)
+    monkeypatch.setattr(price_alert_engine, "_is_trading_time", lambda market: True)
+    monkeypatch.setattr(trading_calendar, "is_trading_day", lambda market: True)
+
+    async def replay(stocks):
+        return {("CN", "PWTST"): {"current_price": 99.70, "source": "qa_replay"}}
+
+    monkeypatch.setattr(engine, "_fetch_quotes_map", replay)
+    fired = asyncio.run(engine.scan_once(only_rule_id=saved["id"]))
+    assert fired["triggered"] == 1, fired
+    event_id = fired["items"][0]["hit_id"]
+    event = client.get(f"{MOBILE}/events/{event_id}", headers=device).json()["data"]
+    assert event["id"] == event_id and event["rule_id"] == saved["id"]
+    assert event["observed_price"] == 99.70 and event["quote_source"] == "qa_replay"
+    assert event["conditions"] == [{"type": "price", "op": "<", "target": 100, "actual": 99.70, "matched": True}]
+    assert client.get(f"{MOBILE}/events", headers=device).json()["data"] == [event]
+    with sessions() as db:
+        assert db.get(PriceAlertRule, web_rule_id).condition_group == group
+        deliveries = db.scalars(select(PriceAlertDelivery).where(PriceAlertDelivery.hit_id == event_id)).all()
+        assert all(row.channel_id is None for row in deliveries)
+
+    rotated = _renew(client, grant["refresh_token"], "9" * 64).json()["data"]
+    assert rotated["alerts_manage"] is True
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.get(f"{MOBILE}/events/{event_id}", headers=_bearer(rotated["access_token"])).status_code == 401
+
+
+def test_push_route_owns_opaque_event_and_retires_with_device(instance, monkeypatch):
+    client, sessions = instance
+    owner, grant = _renewable_grant(client, sessions, manage_alerts=True)
+    _, other = _renewable_grant(client, sessions, manage_alerts=True)
+    device = _bearer(grant["access_token"])
+    path = f"{MOBILE}/push"
+    assert client.get(path, headers=device).json()["data"] == {"available": False, "route_id": None}
+
+    monkeypatch.setenv("PANWATCH_MOBILE_PUSH_GATEWAY_URL", "https://push.example")
+    monkeypatch.setenv("PANWATCH_MOBILE_PUSH_ENROLLMENT_KEY", "k" * 43)
+    aliases = {}
+    relay_calls = []
+    withdrawn = []
+    lose_first_reply = True
+
+    def gateway_request(self, method, endpoint, bearer, body):
+        nonlocal lose_first_reply
+        if endpoint == "/v1/routes":
+            assert set(body) == {"instance_id", "device_id", "platform", "environment", "token"}
+            assert body["instance_id"] == grant["instance_id"] and body["device_id"] != grant["device_id"]
+            route = aliases.setdefault(body["device_id"], str(uuid4()))
+            if lose_first_reply:
+                lose_first_reply = False
+                raise httpx.ReadTimeout("simulated dropped gateway response")
+            return {"route_id": route, "submit_token": "s" * 43}
+        if endpoint == "/v1/enrollments/revoke":
+            assert set(body) == {"instance_id", "device_id"}
+            withdrawn.append(body["device_id"])
+            return {"state": "revoked"}
+        assert endpoint == "/v1/deliveries" and set(body) == {"route_id", "event_id"}
+        relay_calls.append(body)
+        return {"state": "accepted" if len(relay_calls) > 1 else "queued"}
+
+    monkeypatch.setattr(push.Gateway, "request", gateway_request)
+    body = {"token": "example-native-token", "environment": "sandbox"}
+    assert client.put(path, headers=device, json=body).status_code == 503
+    route = client.put(path, headers=device, json=body).json()["data"]["route_id"]
+    assert client.put(path, headers=device, json={**body, "token": "rotated"}).json()["data"]["route_id"] == route
+    assert len(aliases) == 1
+
+    with sessions() as db:
+        stock = Stock(symbol="PUSHTST", market="US", name="Synthetic")
+        db.add(stock)
+        db.flush()
+        rule = PriceAlertRule(
+            stock_id=stock.id, name="Synthetic rule", market_hours_mode="always", mobile_request_id=str(uuid4()),
+        )
+        db.add(rule)
+        db.commit()
+        rule_id = rule.id
+    monkeypatch.setattr(price_alert_engine, "SessionLocal", sessions)
+    monkeypatch.setattr(trading_calendar, "is_trading_day", lambda market: True)
+    hit_id = price_alert_engine.PriceAlertEngine()._persist_hit(
+        rule_id, price_alert_engine._utc_now(), {"quote": {"current_price": 99.70}}, 99.70,
+    )
+    assert hit_id is not None
+    worker = alert_delivery.AlertDeliveryWorker(sessions)
+    assert asyncio.run(worker.drain())["processed"] == 1
+    with sessions() as db:
+        delivery = db.query(PriceAlertDelivery).filter_by(hit_id=hit_id).one()
+        assert delivery.content == "" and delivery.status == "retry"
+        event_id = delivery.event_id
+        delivery.next_attempt_at = alert_delivery.now_utc()
+        db.commit()
+    assert asyncio.run(worker.drain())["processed"] == 1
+    assert relay_calls == [{"route_id": route, "event_id": event_id}] * 2
+
+    event_path = f"{path}/events/{event_id}?route_id={route}"
+    event = client.get(event_path, headers=device).json()["data"]
+    assert event["id"] == hit_id and event["observed_price"] == 99.70
+    assert event["push_delivery"] == "submitted"
+    assert client.get(f"{MOBILE}/events/{hit_id}", headers=device).json()["data"] == event
+    assert client.get(event_path, headers=_bearer(other["access_token"])).status_code == 404
+    assert client.delete(path, headers=device).status_code == 200
+    assert client.get(event_path, headers=device).status_code == 404
+    push.withdraw_pending(sessions)
+    assert len(withdrawn) == 1
+
+    new_route = client.put(path, headers=device, json=body).json()["data"]["route_id"]
+    assert new_route != route
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.get(event_path, headers=device).status_code == 401
+    push.withdraw_pending(sessions)
+    assert len(set(withdrawn)) == 2
+    with sessions() as db:
+        assert all(row.submit_token is None and row.withdraw_after is None for row in db.query(MobilePushRoute))
+
+
 def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'older.db'}")
     with engine.begin() as conn:
@@ -383,5 +543,11 @@ def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
         _m142_mobile_device_renewal(conn)
         legacy = conn.execute(text("SELECT scope, expires_at, refresh_token_hash FROM mobile_devices")).one()
         assert tuple(legacy) == ("portfolio:read", 604801, None)
+        conn.execute(text("CREATE TABLE price_alert_deliveries (id INTEGER PRIMARY KEY, event_id VARCHAR)"))
+        conn.execute(text("INSERT INTO price_alert_deliveries VALUES (1, 'web-event')"))
+        _m144_mobile_push_routes(conn)
+        _m144_mobile_push_routes(conn)
+        channel = conn.execute(text("SELECT event_id, mobile_push_route_id FROM price_alert_deliveries WHERE id = 1")).one()
+        assert tuple(channel) == ("web-event", None)
         assert conn.scalar(text("SELECT name FROM accounts WHERE id = 1")) == "Legacy holding account"
     engine.dispose()

@@ -23,6 +23,7 @@ class Capabilities(BaseModel):
     portfolio_read: bool = True
     session_refresh: bool = True
     watchlist_read: bool = True
+    alerts_manage: bool = True
 
 
 class PairingStart(BaseModel):
@@ -35,6 +36,7 @@ class PasswordLogin(PairingStart):
     device_name: DeviceName
     platform: Platform
     renewable: bool = False
+    manage_alerts: bool = False
 
 
 class PairingQR(BaseModel):
@@ -52,6 +54,7 @@ class PairingClaim(BaseModel):
     device_name: DeviceName
     platform: Platform
     renewable: bool = False
+    manage_alerts: bool = False
 
 
 class PairingDecision(BaseModel):
@@ -66,6 +69,7 @@ class PairingStatus(BaseModel):
     platform: Platform | None
     verification_code: VerificationCode | None
     renewable: bool = False
+    manage_alerts: bool = False
 
 
 class DeviceGrant(BaseModel):
@@ -78,6 +82,7 @@ class DeviceGrant(BaseModel):
     refresh_token: str | None = None
     refresh_expires_at: int | None = None
     watchlist_read: bool = False
+    alerts_manage: bool = False
 
 
 class DeviceSummary(BaseModel):
