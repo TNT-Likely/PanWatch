@@ -59,6 +59,20 @@ Use a fresh random 32-byte lowercase hex `Idempotency-Key` for each rotation. Pe
 
 Refresh credentials are accepted only at the refresh route. Access credentials are accepted only at the permitted read endpoints. The watchlist returns 403 `mobile_scope_required` for a current portfolio-only grant. Validate that the returned device, instance, and HTTPS origin match before saving a rotated grant.
 
+## Price alerts and history
+
+An updated client can request `manage_alerts: true` alongside `renewable: true` when the service advertises `alerts_manage`. The Web approval lists that scope. The resulting `alerts_manage` flag stays with that device through renewal. Existing grants retain their scope. Revocation blocks alert and event requests.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /alerts` | Read the instance's rules and condition groups with the associated market and symbol. |
+| `POST /alerts` | Create a single price threshold for an existing watchlist symbol. Send `market`, `symbol`, `comparison` (`<` or `>`), `price`, and a UUID `request_id`. Reuse the request ID when retrying an ambiguous response. |
+| `POST /alerts/{id}/enabled` | Set `enabled` explicitly. The existing price and compound conditions are preserved. |
+| `GET /events` | Read up to 50 recent persisted hits by default. A `limit` from 1 to 200 is supported. |
+| `GET /events/{id}` | Read a specific hit by its instance-local event ID. The response includes the triggering rule, market, symbol, UTC timestamp and the stored observation and condition results. |
+
+Rules created from the mobile client do not inherit the Web user's default outbound channels. Explicitly selected channels in Web settings continue to apply. The history endpoint uses the actual stored trigger and is available independently of push registration.
+
 ## Portfolio amounts
 
 The total uses the same CNY calculation as the Web view. Holdings use the market currency and include market, symbol, name, quantity and available market value. Entries from separate enabled accounts can share a market and symbol. The mobile response does not expose account names or cost prices.

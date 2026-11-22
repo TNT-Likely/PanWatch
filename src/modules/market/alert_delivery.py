@@ -24,7 +24,7 @@ def now_utc():
 def enqueue(db, hit, rule, title, content):
     """Called inside the hit + inbox transaction. Never commits or sends."""
     ids = list(dict.fromkeys(rule.notify_channel_ids or []))
-    if not ids:
+    if not ids and rule.mobile_request_id is None:
         ids = [c.id for c in db.query(NotifyChannel).filter_by(enabled=True, is_default=True).all()]
     for channel_id in ids or [None]:
         key = str(channel_id) if channel_id is not None else "unconfigured"

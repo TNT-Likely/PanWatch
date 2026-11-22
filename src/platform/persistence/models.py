@@ -928,6 +928,7 @@ class PriceAlertRule(Base):
     repeat_mode = Column(String, default="repeat")  # once/repeat
     expire_at = Column(DateTime, nullable=True)
     notify_channel_ids = Column(JSON, default=[])
+    mobile_request_id = Column(String, nullable=True, unique=True, index=True)
     last_trigger_at = Column(DateTime, nullable=True)
     last_trigger_price = Column(Float, nullable=True)
     trigger_count_today = Column(Integer, default=0)
@@ -1449,6 +1450,7 @@ class MobilePairing(Base):
     status = Column(String, nullable=False)
     expires_at = Column(Integer, nullable=False, index=True)
     renewable = Column(Boolean, nullable=False, default=False, server_default="0")
+    manage_alerts = Column(Boolean, nullable=False, default=False, server_default="0")
 
 
 class MobileDevice(Base):

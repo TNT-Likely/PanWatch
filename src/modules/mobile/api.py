@@ -20,6 +20,7 @@ from sqlalchemy import delete, or_, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
+from src.modules.mobile.alerts import create_alert_router
 from src.modules.mobile.schemas import (
     Capabilities,
     DeviceGrant,
@@ -47,6 +48,7 @@ _REFRESH_TTL = 30 * 24 * 60 * 60
 _REPLAY_TTL = 120
 _PORTFOLIO_SCOPE = "portfolio:read"
 _WATCHLIST_SCOPE = "watchlist:read"
+_ALERTS_SCOPE = "alerts:manage"
 _TOKEN_PREFIX = "pwmob_"
 _REFRESH_PREFIX = "pwmor_"
 _CONSOLE_PENDING = ("waiting_for_device", "waiting_for_approval", "approved")
@@ -128,6 +130,7 @@ def _pairing_status(pairing: MobilePairing) -> PairingStatus:
         platform=pairing.platform,
         verification_code=pairing.verification_code,
         renewable=pairing.renewable,
+        manage_alerts=pairing.manage_alerts,
     )
 
 
@@ -187,6 +190,7 @@ def claim_pairing(pairing_id: UUID, body: PairingClaim, db: DB) -> MobileRespons
             device_name=body.device_name,
             platform=body.platform,
             renewable=body.renewable,
+            manage_alerts=body.renewable and body.manage_alerts,
         )
     )
     pairing = db.get(MobilePairing, key)
@@ -233,20 +237,29 @@ def decide_pairing(pairing_id: UUID, body: PairingDecision, db: DB) -> MobileRes
 
 def _device_grant(db: Session, device: MobileDevice, token: str, refresh_token: str | None) -> DeviceGrant:
     installation = db.get(MobileInstallation, 1)
+    scopes = device.scope.split()
     return DeviceGrant(
         instance_id=installation.instance_id, device_id=device.id, origin=device.origin,
         access_token=token, expires_at=device.access_expires_at or device.expires_at,
         refresh_token=refresh_token, refresh_expires_at=device.expires_at if refresh_token else None,
-        watchlist_read=_WATCHLIST_SCOPE in device.scope.split(),
+        watchlist_read=_WATCHLIST_SCOPE in scopes,
+        alerts_manage=_ALERTS_SCOPE in scopes,
     )
 
 
-def _issue_device(db: Session, name: str, platform: Platform, origin: str, now: int, *, renewable: bool) -> DeviceGrant:
+def _issue_device(
+    db: Session, name: str, platform: Platform, origin: str, now: int, *, renewable: bool, manage_alerts: bool = False,
+) -> DeviceGrant:
     token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
     refresh_token = f"{_REFRESH_PREFIX}{secrets.token_urlsafe(32)}" if renewable else None
+    scopes = [_PORTFOLIO_SCOPE]
+    if renewable:
+        scopes.append(_WATCHLIST_SCOPE)
+        if manage_alerts:
+            scopes.append(_ALERTS_SCOPE)
     device = MobileDevice(
         id=str(uuid4()), name=name, platform=platform, origin=origin,
-        token_hash=_digest(token), scope=f"{_PORTFOLIO_SCOPE} {_WATCHLIST_SCOPE}" if renewable else _PORTFOLIO_SCOPE,
+        token_hash=_digest(token), scope=" ".join(scopes),
         created_at=now, expires_at=now + (_REFRESH_TTL if renewable else _DEVICE_TTL),
         access_expires_at=now + _ACCESS_TTL if renewable else None,
         refresh_token_hash=_digest(refresh_token) if refresh_token else None,
@@ -276,7 +289,10 @@ def exchange_pairing(pairing_id: UUID, credentials: Bearer, db: DB) -> MobileRes
     if redeemed.rowcount != 1:
         raise _pairing_closed()
     pairing = db.get(MobilePairing, key)
-    result = _issue_device(db, pairing.device_name, pairing.platform, pairing.origin, now, renewable=pairing.renewable)
+    result = _issue_device(
+        db, pairing.device_name, pairing.platform, pairing.origin, now,
+        renewable=pairing.renewable, manage_alerts=pairing.manage_alerts,
+    )
     db.commit()
     return MobileResponse(data=result)
 
@@ -320,7 +336,7 @@ def _require_active_device(device: MobileDevice | None, now: int) -> MobileDevic
     return device
 
 
-def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session, scope: str) -> None:
+def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session, scope: str) -> MobileDevice:
     token = credentials.credentials if credentials else ""
     if not re.fullmatch(r"pwmob_[A-Za-z0-9_-]{43}", token):
         raise _invalid_device()
@@ -330,6 +346,7 @@ def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session
         raise _expired_device()
     if scope not in device.scope.split():
         raise api_error(403, "mobile_scope_required", "请重新连接以授权此功能。", headers=_NO_STORE)
+    return device
 
 
 def _rotated_token(old_token: str, request_key: str, prefix: str) -> str:
@@ -414,7 +431,9 @@ def create_router(
     def login_device(body: PasswordLogin, db: DB) -> MobileResponse[DeviceGrant]:
         origin = _https_origin(body.origin)
         verify_login_credentials(db, body.username, body.password.get_secret_value())
-        grant = _issue_device(db, body.device_name, body.platform, origin, _now(), renewable=body.renewable)
+        grant = _issue_device(
+            db, body.device_name, body.platform, origin, _now(), renewable=body.renewable, manage_alerts=body.manage_alerts,
+        )
         db.commit()
         return MobileResponse(data=grant)
 
@@ -447,7 +466,11 @@ def create_router(
         rows = db.execute(select(Stock.symbol, Stock.name, Stock.market).order_by(Stock.sort_order, Stock.id))
         return MobileResponse(data=[WatchlistSymbol(symbol=symbol, name=name, market=market) for symbol, name, market in rows])
 
+    def require_alert_device(credentials: Bearer, db: DB) -> MobileDevice:
+        return _verify_device(credentials, db, _ALERTS_SCOPE)
+
     router.include_router(phone)
+    router.include_router(create_alert_router(require_alert_device))
     router.include_router(owner, dependencies=[Depends(require_owner)])
     router.include_router(password)
     return router

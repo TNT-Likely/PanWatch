@@ -2305,6 +2305,21 @@ def _m142_mobile_device_renewal(conn: Connection) -> None:
     """))
 
 
+def _m143_mobile_price_alerts(conn: Connection) -> None:
+    _add_column_if_missing(
+        conn, "mobile_pairings", "manage_alerts",
+        "ALTER TABLE mobile_pairings ADD COLUMN manage_alerts BOOLEAN NOT NULL DEFAULT 0",
+    )
+    _add_column_if_missing(
+        conn, "price_alert_rules", "mobile_request_id",
+        "ALTER TABLE price_alert_rules ADD COLUMN mobile_request_id VARCHAR",
+    )
+    conn.execute(text("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_price_alert_rules_mobile_request_id
+        ON price_alert_rules (mobile_request_id)
+    """))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2348,6 +2363,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(140, "research_run_leases", _m140_research_run_leases),
     Migration(141, "mobile_device_pairing", _m141_mobile_device_pairing),
     Migration(142, "mobile_device_renewal", _m142_mobile_device_renewal),
+    Migration(143, "mobile_price_alerts", _m143_mobile_price_alerts),
 )
 
 
