@@ -107,7 +107,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
         "portfolio_metrics": True, "symbol_facts": True, "diagnostics_read": True,
-        "disclosures": True, "screening": True, "watchlist_manage": True,
+        "disclosures": True, "disclosure_archive": True, "screening": True, "watchlist_manage": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -731,6 +731,49 @@ def test_disclosures_project_only_typed_facts_and_verified_source_links(instance
     assert filtered == {"state": "upstream_unavailable", "items": [item]}
     assert observed == [(["600999"], "CN", 7), (["600999"], "CN", 30)]
     assert client.get(f"{route}?market=US&symbol=600999", headers=auth).json()["data"]["state"] == "market_unavailable"
+
+
+def test_disclosure_archive_projects_saved_facts_by_date_agent_and_market(instance):
+    from src.platform.persistence.models import AgentContextRun
+
+    client, sessions = instance
+    _, grant = _renewable_grant(client, sessions)
+    legacy = "FIXTURE LEGACY REPORT TARGET PRICE"
+    day = "2026-11-20"
+    article = "AN202611200001"
+    observation = {
+        "time": f"{day} 10:15", "source": "eastmoney", "external_id": article, "event_type": "dividend",
+        "url": f"https://data.eastmoney.com/notices/detail/600999/{article}.html",
+        "title": legacy, "body": legacy,
+    }
+    context = {"events": [observation, {**observation, "time": "invalid"},
+                          {**observation, "url": "https://other.example/report"}], "analysis": legacy}
+    with sessions() as db:
+        db.add_all([
+            Stock(symbol="600999", market="CN", name="Synthetic issuer"),
+            AgentContextRun(agent_name="daily_report", stock_symbol="*", analysis_date=day, context_payload={
+                "symbols": {"CN:600999": context, "US:600999": context}, "result": legacy,
+            }),
+            AgentContextRun(agent_name="premarket_outlook", stock_symbol="*", analysis_date=day,
+                            context_payload={"content": legacy, "symbols": {"US:600999": context}}),
+            AgentContextRun(agent_name="intraday_monitor", stock_symbol="*", analysis_date="2026-11-21",
+                            context_payload={"symbols": {"CN:600999": context}}),
+        ])
+        db.commit()
+    route = f"{MOBILE}/facts/disclosures/archive?on={day}"
+    auth = _bearer(grant["access_token"])
+    assert grant["disclosure_archive"] is True
+    assert client.get(route).status_code == 401
+    response = client.get(f"{route}&agent=daily_report&market=CN&symbol=600999", headers=auth)
+    assert response.status_code == 200
+    assert legacy not in response.text and "other.example" not in response.text
+    assert response.json()["data"] == {"state": "ready", "items": [{
+        "id": f"600999:{article}", "target": {"name": "Synthetic issuer", "symbol": "600999", "market": "CN"},
+        "kind": "dividend", "date": day, "source": "eastmoney", "url": observation["url"],
+    }]}
+    for mismatch in ("agent=premarket_outlook", "agent=intraday_monitor", "symbol=000001", "market=US"):
+        assert client.get(f"{route}&{mismatch}", headers=auth).json()["data"]["items"] == []
+    assert client.get(f"{route}&agent=tradingagents", headers=auth).status_code == 422
 
 
 def test_screening_is_numeric_and_watchlist_add_is_explicit_and_idempotent(instance, monkeypatch):

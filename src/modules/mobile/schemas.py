@@ -24,6 +24,7 @@ class Capabilities(BaseModel):
     portfolio_metrics: bool = True
     symbol_facts: bool = True
     disclosures: bool = True
+    disclosure_archive: bool = True
     screening: bool = True
     watchlist_manage: bool = True
     diagnostics_read: bool = True
@@ -98,6 +99,7 @@ class DeviceGrant(BaseModel):
     portfolio_metrics: bool = True
     symbol_facts: bool = True
     disclosures: bool = True
+    disclosure_archive: bool = True
     screening: bool = True
     watchlist_manage: bool = False
     diagnostics_read: bool = False
