@@ -84,6 +84,7 @@ class DeviceGrant(BaseModel):
     refresh_expires_at: int | None = None
     watchlist_read: bool = False
     alerts_manage: bool = False
+    portfolio_metrics: bool = True
 
 
 class DeviceSummary(BaseModel):
