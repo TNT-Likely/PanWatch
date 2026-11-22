@@ -142,6 +142,7 @@ export const configuration = {
     portfolioAccess: 'Read holdings on this instance.',
     renewableAccess: 'Read holdings and the watchlist on this instance. The connection renews automatically.',
     alertAccess: 'Read holdings and the watchlist, manage price alerts, and read their history. The connection renews automatically.',
+    diagnosticsAccess: 'Can read service diagnostics and test configured data sources.',
     waiting_for_device: 'Waiting for your phone to scan.',
     waiting_for_approval: 'Check the phone, verification code, and requested permissions before approving.',
     approved: 'Approved. Leave this open while your phone connects.',

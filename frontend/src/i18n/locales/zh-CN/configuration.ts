@@ -139,6 +139,7 @@ export const configuration = {
     portfolioAccess: '只读当前实例的持仓。',
     renewableAccess: '只读当前实例的持仓和自选，连接会自动续期。',
     alertAccess: '只读持仓和自选，管理价格提醒并查看触发历史。连接会自动续期。',
+    diagnosticsAccess: '可读取服务诊断，并测试已配置的数据源。',
     waiting_for_device: '等待手机扫码。',
     waiting_for_approval: '请核对设备、校验码和请求的权限，再批准连接。',
     approved: '已批准，请保持此页面打开，等待手机完成连接。',

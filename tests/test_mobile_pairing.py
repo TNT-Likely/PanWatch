@@ -1,5 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
@@ -10,13 +11,14 @@ from sqlalchemy.orm import sessionmaker
 
 from src.bootstrap.application import app
 from src.modules.administration.api import auth, settings
-from src.modules.market import alert_delivery, price_alert_engine
+from src.modules.market import alert_delivery, data_collector, price_alert_engine
 from src.modules.mobile import api as mobile, push
 from src.modules.portfolio.api import accounts
+from src.platform.marketdata import marketdata_client
 from src.platform.persistence.database import Base, get_db
 from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal, _m144_mobile_push_routes
 from src.platform.persistence.models import (
-    Account, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position, PriceAlertDelivery, PriceAlertRule, Stock,
+    Account, AgentConfig, AgentRun, DataSource, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position, PriceAlertDelivery, PriceAlertRule, Stock,
 )
 from src.platform.scheduling import trading_calendar
 
@@ -60,7 +62,7 @@ def _start(client, owner):
     return response.json()["data"]
 
 
-def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=False):
+def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=False, read_diagnostics=False):
     body = {
         "challenge": qr["challenge"],
         "claim_key": claim_key,
@@ -71,6 +73,8 @@ def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=Fa
         body["renewable"] = True
     if manage_alerts:
         body["manage_alerts"] = True
+    if read_diagnostics:
+        body["read_diagnostics"] = True
     return client.post(f"{MOBILE}/pairings/{qr['pairing_id']}/claim", json=body)
 
 
@@ -78,14 +82,15 @@ def _exchange(client, root, claim_key=PHONE_KEY):
     return client.post(f"{root}/exchange", headers=_bearer(claim_key))
 
 
-def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False):
-    response = _claim(client, qr, renewable=renewable, manage_alerts=manage_alerts)
+def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False, read_diagnostics=False):
+    response = _claim(client, qr, renewable=renewable, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics)
     assert response.status_code == 200, response.text
     code = response.json()["data"]["verification_code"]
     review = client.get(root, headers=owner).json()["data"]
     assert review["verification_code"] == code
     assert review["renewable"] is renewable
     assert review["manage_alerts"] is manage_alerts
+    assert review["read_diagnostics"] is read_diagnostics
     response = client.post(f"{root}/decision", headers=owner, json={
         "decision": "approve", "verification_code": code,
     })
@@ -98,7 +103,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
-        "portfolio_metrics": True,
+        "portfolio_metrics": True, "diagnostics_read": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -295,11 +300,11 @@ def test_read_only_portfolio_reports_partial_valuation_and_refreshes_real_positi
     assert client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]["total_assets"] == 80
 
 
-def _renewable_grant(client, sessions, *, manage_alerts=False):
+def _renewable_grant(client, sessions, *, manage_alerts=False, read_diagnostics=False):
     owner = _owner(sessions)
     qr = _start(client, owner)
     root = f"{MOBILE}/pairings/{qr['pairing_id']}"
-    _approve(client, owner, root, qr, renewable=True, manage_alerts=manage_alerts)
+    _approve(client, owner, root, qr, renewable=True, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics)
     return owner, _exchange(client, root).json()["data"]
 
 
@@ -581,3 +586,49 @@ def test_portfolio_metrics_use_same_device_scope_and_preserve_original_response(
     assert original["holdings"][0]["currency"] == "USD"
     assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
     assert client.get(metrics_path, headers=device).status_code == 401
+
+
+def test_diagnostics_preserve_explicit_scope_and_hide_provider_internals(instance, monkeypatch):
+    client, sessions = instance
+    _, old = _renewable_grant(client, sessions)
+    owner, grant = _renewable_grant(client, sessions, read_diagnostics=True)
+    assert not old["diagnostics_read"] and grant["diagnostics_read"]
+    base = f"{MOBILE}/diagnostics"
+    device = _bearer(grant["access_token"])
+    assert client.get(base, headers=_bearer(old["access_token"])).status_code == 403
+    sentinel = "DIAGNOSTICS_PRIVATE_FIXTURE"
+    with sessions() as db:
+        agent = AgentConfig(name="diagnostic-fixture", display_name="Synthetic agent", config={"prompt": sentinel})
+        db.add(agent)
+        db.add(AgentRun(agent_name=agent.name, status="failed", error=sentinel, result=sentinel))
+        source = DataSource(name="Synthetic source", type="quote", provider="fixture", config={"secret": sentinel})
+        db.add(source)
+        db.commit()
+        source_id = source.id
+
+    monkeypatch.setattr(marketdata_client, "get_market_data", lambda: SimpleNamespace(health=lambda: {
+        "fixture": {"count": 4, "success_rate": 0.75, "last_success_at": 1_700_000_000, "last_error": sentinel},
+    }))
+    probes = []
+
+    async def probe(source):
+        probes.append(source.id)
+        return SimpleNamespace(success=False, duration_ms=7, error=sentinel)
+
+    monkeypatch.setattr(data_collector, "get_collector_manager", lambda: SimpleNamespace(test_source=probe))
+    response = client.get(base, headers=device)
+    assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
+    assert sentinel not in response.text
+    data = response.json()["data"]
+    assert data["sources"][0]["provider_success_rate"] == 0.75
+    assert data["agents"][0]["label"] == "Synthetic agent" and data["agents"][0]["result"] == "failed"
+    path = f"{base}/sources/{source_id}/test"
+    assert client.post(path, headers=owner).status_code == 401 and not probes
+    tested = client.post(path, headers=device)
+    assert tested.status_code == 200 and sentinel not in tested.text
+    assert tested.json()["data"]["passed"] is False and tested.json()["data"]["duration_ms"] == 7
+    assert probes == [source_id]
+    rotated = _renew(client, grant["refresh_token"], "e" * 64).json()["data"]
+    assert rotated["diagnostics_read"] is True
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.post(path, headers=_bearer(rotated["access_token"])).status_code == 401

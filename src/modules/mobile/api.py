@@ -21,6 +21,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from src.modules.mobile.alerts import create_alert_router
+from src.modules.mobile.diagnostics import create_diagnostics_router
 from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
 from src.modules.mobile.push import create_push_router, retire_device_push
 from src.modules.mobile.schemas import (
@@ -51,6 +52,7 @@ _REPLAY_TTL = 120
 _PORTFOLIO_SCOPE = "portfolio:read"
 _WATCHLIST_SCOPE = "watchlist:read"
 _ALERTS_SCOPE = "alerts:manage"
+_DIAGNOSTICS_SCOPE = "diagnostics:read"
 _TOKEN_PREFIX = "pwmob_"
 _REFRESH_PREFIX = "pwmor_"
 _CONSOLE_PENDING = ("waiting_for_device", "waiting_for_approval", "approved")
@@ -133,6 +135,7 @@ def _pairing_status(pairing: MobilePairing) -> PairingStatus:
         verification_code=pairing.verification_code,
         renewable=pairing.renewable,
         manage_alerts=pairing.manage_alerts,
+        read_diagnostics=pairing.read_diagnostics,
     )
 
 
@@ -193,6 +196,7 @@ def claim_pairing(pairing_id: UUID, body: PairingClaim, db: DB) -> MobileRespons
             platform=body.platform,
             renewable=body.renewable,
             manage_alerts=body.renewable and body.manage_alerts,
+            read_diagnostics=body.renewable and body.read_diagnostics,
         )
     )
     pairing = db.get(MobilePairing, key)
@@ -246,11 +250,13 @@ def _device_grant(db: Session, device: MobileDevice, token: str, refresh_token: 
         refresh_token=refresh_token, refresh_expires_at=device.expires_at if refresh_token else None,
         watchlist_read=_WATCHLIST_SCOPE in scopes,
         alerts_manage=_ALERTS_SCOPE in scopes,
+        diagnostics_read=_DIAGNOSTICS_SCOPE in scopes,
     )
 
 
 def _issue_device(
-    db: Session, name: str, platform: Platform, origin: str, now: int, *, renewable: bool, manage_alerts: bool = False,
+    db: Session, name: str, platform: Platform, origin: str, now: int, *, renewable: bool,
+    manage_alerts: bool = False, read_diagnostics: bool = False,
 ) -> DeviceGrant:
     token = f"{_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
     refresh_token = f"{_REFRESH_PREFIX}{secrets.token_urlsafe(32)}" if renewable else None
@@ -259,6 +265,8 @@ def _issue_device(
         scopes.append(_WATCHLIST_SCOPE)
         if manage_alerts:
             scopes.append(_ALERTS_SCOPE)
+        if read_diagnostics:
+            scopes.append(_DIAGNOSTICS_SCOPE)
     device = MobileDevice(
         id=str(uuid4()), name=name, platform=platform, origin=origin,
         token_hash=_digest(token), scope=" ".join(scopes),
@@ -293,7 +301,7 @@ def exchange_pairing(pairing_id: UUID, credentials: Bearer, db: DB) -> MobileRes
     pairing = db.get(MobilePairing, key)
     result = _issue_device(
         db, pairing.device_name, pairing.platform, pairing.origin, now,
-        renewable=pairing.renewable, manage_alerts=pairing.manage_alerts,
+        renewable=pairing.renewable, manage_alerts=pairing.manage_alerts, read_diagnostics=pairing.read_diagnostics,
     )
     db.commit()
     return MobileResponse(data=result)
@@ -436,7 +444,8 @@ def create_router(
         origin = _https_origin(body.origin)
         verify_login_credentials(db, body.username, body.password.get_secret_value())
         grant = _issue_device(
-            db, body.device_name, body.platform, origin, _now(), renewable=body.renewable, manage_alerts=body.manage_alerts,
+            db, body.device_name, body.platform, origin, _now(), renewable=body.renewable,
+            manage_alerts=body.manage_alerts, read_diagnostics=body.read_diagnostics,
         )
         db.commit()
         return MobileResponse(data=grant)
@@ -478,6 +487,10 @@ def create_router(
     def require_alert_device(credentials: Bearer, db: DB) -> MobileDevice:
         return _verify_device(credentials, db, _ALERTS_SCOPE)
 
+    def require_diagnostics_device(credentials: Bearer, db: DB) -> MobileDevice:
+        return _verify_device(credentials, db, _DIAGNOSTICS_SCOPE)
+
+    router.include_router(create_diagnostics_router(require_diagnostics_device))
     router.include_router(phone)
     router.include_router(create_alert_router(require_alert_device))
     router.include_router(create_push_router(require_alert_device))

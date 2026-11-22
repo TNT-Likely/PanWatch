@@ -90,3 +90,14 @@ When valuation is `partial`, the total includes available values and recorded ca
   ]
 }
 ```
+
+## Portfolio metrics and service diagnostics
+
+`GET /portfolio/metrics` uses the existing portfolio read grant and reports the current holdings basis, CNY assets, and the account and aggregate P/L figures. Partial and unavailable metrics use an explicit coverage state and a null value. The original `GET /portfolio` response retains its original fields.
+
+Clients may request `read_diagnostics: true` with a renewable connection when `diagnostics_read` is advertised. Review that access in the QR approval or direct sign-in. Diagnostics endpoints use the explicit device grant, which stays in scope through renewal and ends on revocation.
+
+| Route | Behavior |
+| --- | --- |
+| `GET /diagnostics` | List the scheduled workflows visible in Web and recent provider-level source telemetry. The view projects workflow status, timestamps and aggregate source statistics. |
+| `POST /diagnostics/sources/{id}/test` | Test an enabled configured source and return its success flag, elapsed time and observed timestamp. |

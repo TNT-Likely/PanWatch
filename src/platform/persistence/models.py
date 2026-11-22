@@ -1452,6 +1452,7 @@ class MobilePairing(Base):
     expires_at = Column(Integer, nullable=False, index=True)
     renewable = Column(Boolean, nullable=False, default=False, server_default="0")
     manage_alerts = Column(Boolean, nullable=False, default=False, server_default="0")
+    read_diagnostics = Column(Boolean, nullable=False, default=False, server_default="0")
 
 
 class MobileDevice(Base):
