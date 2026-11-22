@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from src.modules.market import price_alert_service
+from src.modules.mobile.push import push_delivery_states, push_event
 from src.modules.mobile.schemas import MobileResponse, WatchlistSymbol
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import MobileDevice, PriceAlertHit, PriceAlertRule, Stock
@@ -20,6 +21,11 @@ from src.web.errors import api_error
 
 
 DB = Annotated[Session, Depends(get_db)]
+PushDelivery = Literal["pending", "submitted", "failed"]
+_PUSH_DELIVERY: dict[str, PushDelivery] = {
+    "pending": "pending", "retry": "pending", "sending": "pending",
+    "delivered": "submitted", "failed": "failed", "blocked": "failed",
+}
 
 
 class AlertCondition(BaseModel):
@@ -71,6 +77,7 @@ class AlertEvent(BaseModel):
     quote_source: str | None
     group_op: Literal["and", "or"]
     conditions: list[EventCondition]
+    push_delivery: PushDelivery | None = None
 
 
 def _rule(row: PriceAlertRule) -> AlertRule:
@@ -90,7 +97,7 @@ def _number(value) -> float | None:
     return None
 
 
-def _event(hit: PriceAlertHit) -> AlertEvent:
+def _event(hit: PriceAlertHit, delivery: str | None = None) -> AlertEvent:
     snapshot = hit.trigger_snapshot or {}
     quote = snapshot.get("quote") or {}
     conditions = []
@@ -116,6 +123,7 @@ def _event(hit: PriceAlertHit) -> AlertEvent:
         occurred_at=hit.trigger_time.replace(tzinfo=UTC), observed_price=_number(quote.get("current_price")),
         quote_source=quote.get("source") if isinstance(quote.get("source"), str) else None,
         group_op="or" if snapshot.get("group_op") == "or" else "and", conditions=conditions,
+        push_delivery=_PUSH_DELIVERY.get(delivery or ""),
     )
 
 
@@ -159,18 +167,32 @@ def create_alert_router(require_device: Callable[..., MobileDevice]) -> APIRoute
         return MobileResponse(data=_rule(row))
 
     @router.get("/events")
-    def history(db: DB, limit: Annotated[int, Query(ge=1, le=200)] = 50) -> MobileResponse[list[AlertEvent]]:
+    def history(
+        db: DB, device: Annotated[MobileDevice, Depends(require_device)],
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    ) -> MobileResponse[list[AlertEvent]]:
         rows = db.scalars(
             select(PriceAlertHit).options(joinedload(PriceAlertHit.stock), joinedload(PriceAlertHit.rule))
             .order_by(PriceAlertHit.trigger_time.desc(), PriceAlertHit.id.desc()).limit(limit)
-        )
-        return MobileResponse(data=[_event(row) for row in rows])
+        ).all()
+        receipts = push_delivery_states(db, device.id, [row.id for row in rows])
+        return MobileResponse(data=[_event(row, receipts.get(row.id)) for row in rows])
 
     @router.get("/events/{event_id}")
-    def get_event(event_id: int, db: DB) -> MobileResponse[AlertEvent]:
+    def get_event(event_id: int, db: DB, device: Annotated[MobileDevice, Depends(require_device)]) -> MobileResponse[AlertEvent]:
         hit = db.get(PriceAlertHit, event_id)
         if hit is None:
             raise api_error(404, "mobile_alert_event_not_found", "提醒事件已不可用。")
-        return MobileResponse(data=_event(hit))
+        receipt = push_delivery_states(db, device.id, [event_id]).get(event_id)
+        return MobileResponse(data=_event(hit, receipt))
+
+    @router.get("/push/events/{event_id}")
+    def notification_event(
+        event_id: UUID, route_id: UUID, db: DB, device: Annotated[MobileDevice, Depends(require_device)],
+    ) -> MobileResponse[AlertEvent]:
+        result = push_event(db, device.id, event_id, route_id)
+        if result is None:
+            raise api_error(404, "mobile_alert_event_not_found", "此设备的通知已不可用。")
+        return MobileResponse(data=_event(*result))
 
     return router

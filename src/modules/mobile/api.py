@@ -21,6 +21,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from src.modules.mobile.alerts import create_alert_router
+from src.modules.mobile.push import create_push_router, retire_device_push
 from src.modules.mobile.schemas import (
     Capabilities,
     DeviceGrant,
@@ -306,13 +307,15 @@ def list_devices(db: DB) -> MobileResponse[list[DeviceSummary]]:
 @owner.delete("/devices/{device_id}")
 def revoke_device(device_id: UUID, db: DB) -> MobileResponse[DeviceSummary]:
     key = str(device_id)
+    now = _now()
     db.execute(
         update(MobileDevice).where(MobileDevice.id == key, MobileDevice.revoked_at.is_(None))
-        .values(revoked_at=_now())
+        .values(revoked_at=now)
     )
     device = db.get(MobileDevice, key)
     if device is None:
         raise api_error(404, "mobile_device_not_found", "未找到此设备。")
+    retire_device_push(db, key, now)
     result = DeviceSummary.model_validate(device, from_attributes=True)
     db.commit()
     return MobileResponse(data=result)
@@ -471,6 +474,7 @@ def create_router(
 
     router.include_router(phone)
     router.include_router(create_alert_router(require_alert_device))
+    router.include_router(create_push_router(require_alert_device))
     router.include_router(owner, dependencies=[Depends(require_owner)])
     router.include_router(password)
     return router

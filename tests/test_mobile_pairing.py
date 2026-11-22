@@ -2,6 +2,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
@@ -9,13 +10,13 @@ from sqlalchemy.orm import sessionmaker
 
 from src.bootstrap.application import app
 from src.modules.administration.api import auth, settings
-from src.modules.market import price_alert_engine
-from src.modules.mobile import api as mobile
+from src.modules.market import alert_delivery, price_alert_engine
+from src.modules.mobile import api as mobile, push
 from src.modules.portfolio.api import accounts
 from src.platform.persistence.database import Base, get_db
-from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal
+from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal, _m144_mobile_push_routes
 from src.platform.persistence.models import (
-    Account, MobileDevice, MobilePairing, NotifyChannel, Position, PriceAlertDelivery, PriceAlertRule, Stock,
+    Account, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position, PriceAlertDelivery, PriceAlertRule, Stock,
 )
 from src.platform.scheduling import trading_calendar
 
@@ -436,6 +437,94 @@ def test_mobile_alerts_replay_real_engine_and_keep_web_rules_and_channels(instan
     assert client.get(f"{MOBILE}/events/{event_id}", headers=_bearer(rotated["access_token"])).status_code == 401
 
 
+def test_push_route_owns_opaque_event_and_retires_with_device(instance, monkeypatch):
+    client, sessions = instance
+    owner, grant = _renewable_grant(client, sessions, manage_alerts=True)
+    _, other = _renewable_grant(client, sessions, manage_alerts=True)
+    device = _bearer(grant["access_token"])
+    path = f"{MOBILE}/push"
+    assert client.get(path, headers=device).json()["data"] == {"available": False, "route_id": None}
+
+    monkeypatch.setenv("PANWATCH_MOBILE_PUSH_GATEWAY_URL", "https://push.example")
+    monkeypatch.setenv("PANWATCH_MOBILE_PUSH_ENROLLMENT_KEY", "k" * 43)
+    aliases = {}
+    relay_calls = []
+    withdrawn = []
+    lose_first_reply = True
+
+    def gateway_request(self, method, endpoint, bearer, body):
+        nonlocal lose_first_reply
+        if endpoint == "/v1/routes":
+            assert set(body) == {"instance_id", "device_id", "platform", "environment", "token"}
+            assert body["instance_id"] == grant["instance_id"] and body["device_id"] != grant["device_id"]
+            route = aliases.setdefault(body["device_id"], str(uuid4()))
+            if lose_first_reply:
+                lose_first_reply = False
+                raise httpx.ReadTimeout("simulated dropped gateway response")
+            return {"route_id": route, "submit_token": "s" * 43}
+        if endpoint == "/v1/enrollments/revoke":
+            assert set(body) == {"instance_id", "device_id"}
+            withdrawn.append(body["device_id"])
+            return {"state": "revoked"}
+        assert endpoint == "/v1/deliveries" and set(body) == {"route_id", "event_id"}
+        relay_calls.append(body)
+        return {"state": "accepted" if len(relay_calls) > 1 else "queued"}
+
+    monkeypatch.setattr(push.Gateway, "request", gateway_request)
+    body = {"token": "example-native-token", "environment": "sandbox"}
+    assert client.put(path, headers=device, json=body).status_code == 503
+    route = client.put(path, headers=device, json=body).json()["data"]["route_id"]
+    assert client.put(path, headers=device, json={**body, "token": "rotated"}).json()["data"]["route_id"] == route
+    assert len(aliases) == 1
+
+    with sessions() as db:
+        stock = Stock(symbol="PUSHTST", market="US", name="Synthetic")
+        db.add(stock)
+        db.flush()
+        rule = PriceAlertRule(
+            stock_id=stock.id, name="Synthetic rule", market_hours_mode="always", mobile_request_id=str(uuid4()),
+        )
+        db.add(rule)
+        db.commit()
+        rule_id = rule.id
+    monkeypatch.setattr(price_alert_engine, "SessionLocal", sessions)
+    monkeypatch.setattr(trading_calendar, "is_trading_day", lambda market: True)
+    hit_id = price_alert_engine.PriceAlertEngine()._persist_hit(
+        rule_id, price_alert_engine._utc_now(), {"quote": {"current_price": 99.70}}, 99.70,
+    )
+    assert hit_id is not None
+    worker = alert_delivery.AlertDeliveryWorker(sessions)
+    assert asyncio.run(worker.drain())["processed"] == 1
+    with sessions() as db:
+        delivery = db.query(PriceAlertDelivery).filter_by(hit_id=hit_id).one()
+        assert delivery.content == "" and delivery.status == "retry"
+        event_id = delivery.event_id
+        delivery.next_attempt_at = alert_delivery.now_utc()
+        db.commit()
+    assert asyncio.run(worker.drain())["processed"] == 1
+    assert relay_calls == [{"route_id": route, "event_id": event_id}] * 2
+
+    event_path = f"{path}/events/{event_id}?route_id={route}"
+    event = client.get(event_path, headers=device).json()["data"]
+    assert event["id"] == hit_id and event["observed_price"] == 99.70
+    assert event["push_delivery"] == "submitted"
+    assert client.get(f"{MOBILE}/events/{hit_id}", headers=device).json()["data"] == event
+    assert client.get(event_path, headers=_bearer(other["access_token"])).status_code == 404
+    assert client.delete(path, headers=device).status_code == 200
+    assert client.get(event_path, headers=device).status_code == 404
+    push.withdraw_pending(sessions)
+    assert len(withdrawn) == 1
+
+    new_route = client.put(path, headers=device, json=body).json()["data"]["route_id"]
+    assert new_route != route
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.get(event_path, headers=device).status_code == 401
+    push.withdraw_pending(sessions)
+    assert len(set(withdrawn)) == 2
+    with sessions() as db:
+        assert all(row.submit_token is None and row.withdraw_after is None for row in db.query(MobilePushRoute))
+
+
 def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'older.db'}")
     with engine.begin() as conn:
@@ -454,5 +543,11 @@ def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
         _m142_mobile_device_renewal(conn)
         legacy = conn.execute(text("SELECT scope, expires_at, refresh_token_hash FROM mobile_devices")).one()
         assert tuple(legacy) == ("portfolio:read", 604801, None)
+        conn.execute(text("CREATE TABLE price_alert_deliveries (id INTEGER PRIMARY KEY, event_id VARCHAR)"))
+        conn.execute(text("INSERT INTO price_alert_deliveries VALUES (1, 'web-event')"))
+        _m144_mobile_push_routes(conn)
+        _m144_mobile_push_routes(conn)
+        channel = conn.execute(text("SELECT event_id, mobile_push_route_id FROM price_alert_deliveries WHERE id = 1")).one()
+        assert tuple(channel) == ("web-event", None)
         assert conn.scalar(text("SELECT name FROM accounts WHERE id = 1")) == "Legacy holding account"
     engine.dispose()

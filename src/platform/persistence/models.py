@@ -13,7 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 
 from src.platform.persistence.database import Base
 
@@ -1001,6 +1001,7 @@ class PriceAlertDelivery(Base):
     hit_id = Column(Integer, ForeignKey("price_alert_hits.id", ondelete="CASCADE"), nullable=False)
     channel_key = Column(String, nullable=False)
     channel_id = Column(Integer, nullable=True)  # logical reference; deleted channels remain visible
+    mobile_push_route_id = Column(String, nullable=True, index=True)
     event_id = Column(String, nullable=False, unique=True)
     title = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
@@ -1470,6 +1471,22 @@ class MobileDevice(Base):
     previous_refresh_hash = Column(String, nullable=True, index=True)
     refresh_request_hash = Column(String, nullable=True)
     refresh_replay_until = Column(Integer, nullable=True)
+
+
+class MobilePushRoute(Base):
+    __tablename__ = "mobile_push_routes"
+    __table_args__ = (
+        Index("uq_mobile_push_active_device", "device_id", unique=True, sqlite_where=text("retired_at IS NULL")),
+    )
+
+    id = Column(String, primary_key=True)
+    device_id = Column(String, ForeignKey("mobile_devices.id"), nullable=False)
+    instance_id = Column(String, nullable=False)
+    gateway_route_id = Column(String, nullable=True)
+    submit_token = Column(String, nullable=True)
+    retired_at = Column(Integer, nullable=True)
+    withdraw_after = Column(Integer, nullable=True, index=True)
+    withdraw_attempts = Column(Integer, nullable=False, default=0)
 
 
 class PersonalAccessToken(Base):
