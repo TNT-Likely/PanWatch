@@ -2358,6 +2358,13 @@ def _m145_mobile_device_diagnostics(conn: Connection) -> None:
     )
 
 
+def _m146_mobile_watchlist_add(conn: Connection) -> None:
+    _add_column_if_missing(
+        conn, "mobile_pairings", "manage_watchlist",
+        "ALTER TABLE mobile_pairings ADD COLUMN manage_watchlist BOOLEAN NOT NULL DEFAULT 0",
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2404,6 +2411,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(143, "mobile_price_alerts", _m143_mobile_price_alerts),
     Migration(144, "mobile_push_routes", _m144_mobile_push_routes),
     Migration(145, "mobile_device_diagnostics", _m145_mobile_device_diagnostics),
+    Migration(146, "mobile_watchlist_add", _m146_mobile_watchlist_add),
 )
 
 

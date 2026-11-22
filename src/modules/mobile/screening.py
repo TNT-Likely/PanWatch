@@ -1,0 +1,100 @@
+"""Objective candidate search and explicit additions to the paired watchlist."""
+
+from datetime import date
+from math import isfinite
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field, FiniteFloat, StringConstraints
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from src.modules.market.watchlist import add_stock
+from src.modules.mobile.schemas import MobileResponse, WatchlistSymbol
+from src.platform.marketdata.marketdata_client import md_quote_rows
+from src.platform.marketdata.stock_list import search_stocks
+from src.platform.persistence.database import get_db
+from src.platform.persistence.models import Stock
+from src.web.errors import api_error
+
+DB = Annotated[Session, Depends(get_db)]
+Market = Literal["CN", "HK", "US"]
+SearchTerm = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=48)]
+Price = Annotated[FiniteFloat, Field(ge=0)]
+_CURRENCIES = {"CN": "CNY", "HK": "HKD", "US": "USD"}
+
+
+class Candidate(BaseModel):
+    target: WatchlistSymbol
+    price: FiniteFloat | None
+    quote_date: date | None
+    source: str | None
+    saved: bool
+
+
+class Screening(BaseModel):
+    candidates: list[Candidate]
+    currency: Literal["CNY", "HKD", "USD"]
+    missing_quotes: int
+
+
+class WatchlistAdd(BaseModel):
+    market: Market
+    symbol: SearchTerm
+
+
+def _known_symbols(query: str, market: Market) -> dict[str, WatchlistSymbol]:
+    candidates = {}
+    for item in search_stocks(query, market, limit=20):
+        if item.get("market") != market:
+            continue
+        target = WatchlistSymbol.model_validate(item)
+        candidates.setdefault(target.symbol, target)
+    return candidates
+
+
+def create_screening_router(require_reader, require_writer) -> APIRouter:
+    router = APIRouter()
+
+    @router.get("/screening", dependencies=[Depends(require_reader)])
+    def screen(
+        db: DB, q: SearchTerm, market: Market,
+        min_price: Annotated[Price | None, Query()] = None, max_price: Annotated[Price | None, Query()] = None,
+    ) -> MobileResponse[Screening]:
+        if min_price is not None and max_price is not None and min_price > max_price:
+            raise api_error(400, "mobile_price_range_invalid", "价格区间无效。")
+        universe = _known_symbols(q, market)
+        if not universe:
+            return MobileResponse(data=Screening(candidates=[], currency=_CURRENCIES[market], missing_quotes=0))
+        quotes = {row["symbol"]: row for row in md_quote_rows(list(universe), market) if row["market"] == market}
+        saved = set(db.scalars(select(Stock.symbol).where(Stock.market == market, Stock.symbol.in_(list(universe)))))
+        items = []
+        missing = 0
+        for symbol, target in sorted(universe.items()):
+            quote = quotes.get(symbol, {})
+            price = quote.get("current_price")
+            if price is None or not isfinite(price):
+                price = None
+                missing += 1
+            if min_price is not None and (price is None or price < min_price):
+                continue
+            if max_price is not None and (price is None or price > max_price):
+                continue
+            items.append(Candidate(target=target, price=price, quote_date=quote.get("quote_date"),
+                                   source=quote.get("source") or None, saved=symbol in saved))
+        return MobileResponse(data=Screening(candidates=items, currency=_CURRENCIES[market], missing_quotes=missing))
+
+    @router.post("/symbols/watchlist/add", dependencies=[Depends(require_writer)])
+    def add(body: WatchlistAdd, db: DB) -> MobileResponse[WatchlistSymbol]:
+        current = select(Stock).where(Stock.market == body.market, Stock.symbol == body.symbol).order_by(Stock.id).limit(1)
+        row = db.scalar(current)
+        if row is None:
+            candidate = _known_symbols(body.symbol, body.market).get(body.symbol)
+            if candidate is None:
+                raise api_error(404, "mobile_symbol_not_found", "此标的不可用。")
+            row = add_stock(db, name=candidate.name, market=body.market, symbol=candidate.symbol) or db.scalar(current)
+            if row is None:
+                raise api_error(409, "mobile_watchlist_changed", "自选已变更，请重试。")
+        return MobileResponse(data=WatchlistSymbol.model_validate(row, from_attributes=True))
+
+    return router

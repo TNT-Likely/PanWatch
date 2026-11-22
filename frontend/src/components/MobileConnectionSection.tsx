@@ -27,6 +27,7 @@ type PairingStatus = {
   renewable?: boolean
   manage_alerts?: boolean
   read_diagnostics?: boolean
+  manage_watchlist?: boolean
 }
 type Device = {
   id: string
@@ -200,6 +201,7 @@ export default function MobileConnectionSection() {
                 {t(review.manage_alerts ? 'mobile.alertAccess' : review.renewable ? 'mobile.renewableAccess' : 'mobile.portfolioAccess')}
               </p>
               {review.read_diagnostics && <p className="text-xs text-muted-foreground">{t('mobile.diagnosticsAccess')}</p>}
+              {review.manage_watchlist && <p className="text-xs text-muted-foreground">{t('mobile.watchlistAddAccess')}</p>}
               <p className="font-mono text-lg tracking-widest">{review.verification_code}</p>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={busy} onClick={() => void decide('approve')}>{t('mobile.approve')}</Button>

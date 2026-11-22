@@ -62,7 +62,7 @@ def _start(client, owner):
     return response.json()["data"]
 
 
-def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=False, read_diagnostics=False):
+def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=False, read_diagnostics=False, manage_watchlist=False):
     body = {
         "challenge": qr["challenge"],
         "claim_key": claim_key,
@@ -75,6 +75,8 @@ def _claim(client, qr, claim_key=PHONE_KEY, *, renewable=False, manage_alerts=Fa
         body["manage_alerts"] = True
     if read_diagnostics:
         body["read_diagnostics"] = True
+    if manage_watchlist:
+        body["manage_watchlist"] = True
     return client.post(f"{MOBILE}/pairings/{qr['pairing_id']}/claim", json=body)
 
 
@@ -82,8 +84,8 @@ def _exchange(client, root, claim_key=PHONE_KEY):
     return client.post(f"{root}/exchange", headers=_bearer(claim_key))
 
 
-def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False, read_diagnostics=False):
-    response = _claim(client, qr, renewable=renewable, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics)
+def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False, read_diagnostics=False, manage_watchlist=False):
+    response = _claim(client, qr, renewable=renewable, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics, manage_watchlist=manage_watchlist)
     assert response.status_code == 200, response.text
     code = response.json()["data"]["verification_code"]
     review = client.get(root, headers=owner).json()["data"]
@@ -91,6 +93,7 @@ def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False, r
     assert review["renewable"] is renewable
     assert review["manage_alerts"] is manage_alerts
     assert review["read_diagnostics"] is read_diagnostics
+    assert review["manage_watchlist"] is manage_watchlist
     response = client.post(f"{root}/decision", headers=owner, json={
         "decision": "approve", "verification_code": code,
     })
@@ -104,7 +107,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
         "portfolio_metrics": True, "symbol_facts": True, "diagnostics_read": True,
-        "disclosures": True,
+        "disclosures": True, "screening": True, "watchlist_manage": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -301,11 +304,11 @@ def test_read_only_portfolio_reports_partial_valuation_and_refreshes_real_positi
     assert client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]["total_assets"] == 80
 
 
-def _renewable_grant(client, sessions, *, manage_alerts=False, read_diagnostics=False):
+def _renewable_grant(client, sessions, *, manage_alerts=False, read_diagnostics=False, manage_watchlist=False):
     owner = _owner(sessions)
     qr = _start(client, owner)
     root = f"{MOBILE}/pairings/{qr['pairing_id']}"
-    _approve(client, owner, root, qr, renewable=True, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics)
+    _approve(client, owner, root, qr, renewable=True, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics, manage_watchlist=manage_watchlist)
     return owner, _exchange(client, root).json()["data"]
 
 
@@ -728,3 +731,50 @@ def test_disclosures_project_only_typed_facts_and_verified_source_links(instance
     assert filtered == {"state": "upstream_unavailable", "items": [item]}
     assert observed == [(["600999"], "CN", 7), (["600999"], "CN", 30)]
     assert client.get(f"{route}?market=US&symbol=600999", headers=auth).json()["data"]["state"] == "market_unavailable"
+
+
+def test_screening_is_numeric_and_watchlist_add_is_explicit_and_idempotent(instance, monkeypatch):
+    from src.modules.mobile import screening
+
+    client, sessions = instance
+    owner, viewer = _renewable_grant(client, sessions)
+    _, editor = _renewable_grant(client, sessions, manage_watchlist=True)
+    rows = [
+        {"symbol": "EXP", "name": "Higher price", "market": "US"},
+        {"symbol": "SAME", "name": "Matching synthetic symbol", "market": "US"},
+        {"symbol": "NODATA", "name": "Unavailable quote", "market": "US"},
+        {"symbol": "SAME", "name": "Different market", "market": "CN"},
+    ]
+    def search(term, market, limit):
+        if term == "SAME":
+            return [row for row in rows if row["symbol"] == term]
+        return rows
+
+    monkeypatch.setattr(screening, "search_stocks", search)
+    monkeypatch.setattr(screening, "md_quote_rows", lambda *_: [
+        {"symbol": "EXP", "market": "US", "current_price": 50},
+        {"symbol": "SAME", "market": "US", "current_price": 12, "source": "fixture-quote", "quote_date": "2026-11-20"},
+        {"symbol": "SAME", "market": "CN", "current_price": 95, "source": "wrong-market"},
+    ])
+    view = _bearer(viewer["access_token"])
+    write = _bearer(editor["access_token"])
+    screened = client.get(f"{MOBILE}/screening?q=TEST&market=US&min_price=10&max_price=20", headers=view)
+    assert screened.status_code == 200
+    data = screened.json()["data"]
+    assert data["missing_quotes"] == 1 and data["currency"] == "USD"
+    assert len(data["candidates"]) == 1 and data["candidates"][0]["price"] == 12
+    assert data["candidates"][0]["target"]["market"] == "US" and "wrong-market" not in screened.text
+    assert client.get(f"{MOBILE}/screening?q=TEST&market=US&min_price=30&max_price=20", headers=view).status_code == 400
+    assert client.get(f"{MOBILE}/screening?q=TEST&market=US&min_price=-1", headers=view).status_code == 422
+    path = f"{MOBILE}/symbols/watchlist/add"
+    body = {"market": "US", "symbol": "SAME"}
+    assert client.post(path, headers=view, json=body).status_code == 403
+    assert editor["watchlist_manage"] is True
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replies = list(pool.map(lambda _: client.post(path, headers=write, json=body), range(2)))
+    assert [reply.status_code for reply in replies] == [200, 200]
+    assert replies[0].json()["data"] == replies[1].json()["data"] == rows[1]
+    with sessions() as db:
+        assert db.query(Stock).filter_by(symbol="SAME", market="US").count() == 1
+    assert client.post("/api/stocks", headers=owner, json={**body, "name": "Duplicate"}).status_code == 400
+    assert client.get(f"{MOBILE}/symbols/watchlist", headers=view).json()["data"] == [rows[1]]
