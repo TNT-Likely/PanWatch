@@ -68,7 +68,7 @@ An updated client can request `manage_alerts: true` alongside `renewable: true` 
 | `GET /alerts` | Read the instance's rules and condition groups with the associated market and symbol. |
 | `POST /alerts` | Create a single price threshold for an existing watchlist symbol. Send `market`, `symbol`, `comparison` (`<` or `>`), `price`, and a UUID `request_id`. Reuse the request ID when retrying an ambiguous response. |
 | `POST /alerts/{id}/enabled` | Set `enabled` explicitly. The existing price and compound conditions are preserved. |
-| `GET /events` | Read up to 50 recent persisted hits by default. A `limit` from 1 to 200 is supported. |
+| `GET /events` | Read up to 50 recent persisted hits by default. A `limit` from 1 to 200 is supported. Services advertising `symbol_alert_history` accept `market` and `symbol` together to filter the result before applying the limit. |
 | `GET /events/{id}` | Read a specific hit by its instance-local event ID. The response includes the triggering rule, market, symbol, UTC timestamp and the stored observation and condition results. |
 
 Rules created from the mobile client do not inherit the Web user's default outbound channels. Explicitly selected channels in Web settings continue to apply. The history endpoint uses the actual stored trigger and is available independently of push registration.

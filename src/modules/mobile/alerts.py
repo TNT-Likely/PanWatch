@@ -170,11 +170,15 @@ def create_alert_router(require_device: Callable[..., MobileDevice]) -> APIRoute
     def history(
         db: DB, device: Annotated[MobileDevice, Depends(require_device)],
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
+        market: Literal["CN", "HK", "US"] | None = None,
+        symbol: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
     ) -> MobileResponse[list[AlertEvent]]:
-        rows = db.scalars(
-            select(PriceAlertHit).options(joinedload(PriceAlertHit.stock), joinedload(PriceAlertHit.rule))
-            .order_by(PriceAlertHit.trigger_time.desc(), PriceAlertHit.id.desc()).limit(limit)
-        ).all()
+        if (market is None) != (symbol is None):
+            raise api_error(422, "mobile_symbol_identity_required", "请同时提供市场和代码。")
+        query = select(PriceAlertHit).options(joinedload(PriceAlertHit.stock), joinedload(PriceAlertHit.rule))
+        if market is not None:
+            query = query.join(PriceAlertHit.stock).where(Stock.market == market, Stock.symbol == symbol)
+        rows = db.scalars(query.order_by(PriceAlertHit.trigger_time.desc(), PriceAlertHit.id.desc()).limit(limit)).all()
         receipts = push_delivery_states(db, device.id, [row.id for row in rows])
         return MobileResponse(data=[_event(row, receipts.get(row.id)) for row in rows])
 

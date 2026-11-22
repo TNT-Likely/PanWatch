@@ -25,6 +25,7 @@ class Capabilities(BaseModel):
     symbol_facts: bool = True
     disclosures: bool = True
     disclosure_archive: bool = True
+    symbol_alert_history: bool = True
     screening: bool = True
     watchlist_manage: bool = True
     diagnostics_read: bool = True
@@ -100,6 +101,7 @@ class DeviceGrant(BaseModel):
     symbol_facts: bool = True
     disclosures: bool = True
     disclosure_archive: bool = True
+    symbol_alert_history: bool = True
     screening: bool = True
     watchlist_manage: bool = False
     diagnostics_read: bool = False

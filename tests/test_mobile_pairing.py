@@ -1,5 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -18,7 +19,8 @@ from src.platform.marketdata import marketdata_client
 from src.platform.persistence.database import Base, get_db
 from src.platform.persistence.migrations import _m141_mobile_device_pairing, _m142_mobile_device_renewal, _m144_mobile_push_routes
 from src.platform.persistence.models import (
-    Account, AgentConfig, AgentRun, DataSource, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position, PriceAlertDelivery, PriceAlertRule, Stock,
+    Account, AgentConfig, AgentRun, DataSource, MobileDevice, MobilePairing, MobilePushRoute, NotifyChannel, Position,
+    PriceAlertDelivery, PriceAlertHit, PriceAlertRule, Stock,
 )
 from src.platform.scheduling import trading_calendar
 
@@ -107,7 +109,8 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
         "portfolio_metrics": True, "symbol_facts": True, "diagnostics_read": True,
-        "disclosures": True, "disclosure_archive": True, "screening": True, "watchlist_manage": True,
+        "disclosures": True, "disclosure_archive": True, "symbol_alert_history": True,
+        "screening": True, "watchlist_manage": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -440,6 +443,20 @@ def test_mobile_alerts_replay_real_engine_and_keep_web_rules_and_channels(instan
         assert db.get(PriceAlertRule, web_rule_id).condition_group == group
         deliveries = db.scalars(select(PriceAlertDelivery).where(PriceAlertDelivery.hit_id == event_id)).all()
         assert all(row.channel_id is None for row in deliveries)
+        other_stock = Stock(symbol="PWTST", market="US", name="US fixture")
+        other_rule = PriceAlertRule(stock=other_stock, name="Same code in another market", condition_group=group)
+        later = datetime.fromisoformat(event["occurred_at"]).replace(tzinfo=None) + timedelta(minutes=1)
+        other_event = PriceAlertHit(stock=other_stock, rule=other_rule, trigger_time=later)
+        db.add(other_event)
+        db.commit()
+        other_id = other_event.id
+
+    history = f"{MOBILE}/events?limit=1"
+    assert client.get(history, headers=device).json()["data"][0]["id"] == other_id
+    assert client.get(f"{history}&market=CN&symbol=PWTST", headers=device).json()["data"] == [event]
+    assert client.get(f"{history}&market=US&symbol=PWTST", headers=device).json()["data"][0]["id"] == other_id
+    assert client.get(f"{history}&market=CN", headers=device).status_code == 422
+    assert client.get(f"{history}&market=CN&symbol=PWTST", headers=_bearer(old["access_token"])).status_code == 403
 
     rotated = _renew(client, grant["refresh_token"], "9" * 64).json()["data"]
     assert rotated["alerts_manage"] is True
