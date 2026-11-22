@@ -21,6 +21,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from src.modules.mobile.alerts import create_alert_router
+from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
 from src.modules.mobile.push import create_push_router, retire_device_push
 from src.modules.mobile.schemas import (
     Capabilities,
@@ -462,6 +463,11 @@ def create_router(
         return MobileResponse(data=Portfolio(
             total_assets=summary["total"]["total_assets"], valuation=valuation, holdings=holdings,
         ))
+
+    @router.get("/portfolio/metrics")
+    def portfolio_metrics(credentials: Bearer, db: DB) -> MobileResponse[PortfolioMetrics]:
+        _verify_device(credentials, db, _PORTFOLIO_SCOPE)
+        return MobileResponse(data=build_portfolio_metrics(get_portfolio_summary(db)))
 
     @router.get("/symbols/watchlist")
     def watchlist(credentials: Bearer, db: DB) -> MobileResponse[list[WatchlistSymbol]]:

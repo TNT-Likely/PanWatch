@@ -21,6 +21,7 @@ class Capabilities(BaseModel):
     pairing: bool
     password_login: bool
     portfolio_read: bool = True
+    portfolio_metrics: bool = True
     session_refresh: bool = True
     watchlist_read: bool = True
     alerts_manage: bool = True

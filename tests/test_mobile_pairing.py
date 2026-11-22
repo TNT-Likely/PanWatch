@@ -98,6 +98,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
+        "portfolio_metrics": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -551,3 +552,32 @@ def test_mobile_migration_is_additive_and_safe_to_repeat(tmp_path):
         assert tuple(channel) == ("web-event", None)
         assert conn.scalar(text("SELECT name FROM accounts WHERE id = 1")) == "Legacy holding account"
     engine.dispose()
+
+
+def test_portfolio_metrics_use_same_device_scope_and_preserve_original_response(instance, monkeypatch):
+    client, sessions = instance
+    owner, grant = _renewable_grant(client, sessions)
+    device = _bearer(grant["access_token"])
+    summary = {
+        "accounts": [{
+            "id": 6, "name": "Test", "total_assets": 50, "total_pnl": 3, "total_daily_pnl": 0,
+            "positions": [{
+                "symbol": "TEST", "name": "Synthetic", "market": "US", "quantity": 2,
+                "market_value": 4, "daily_pnl": 0, "private_note": "fixture only",
+            }],
+        }],
+        "total": {"total_assets": 50, "total_pnl": 3, "total_daily_pnl": 0},
+    }
+    monkeypatch.setattr(accounts, "get_portfolio_summary", lambda **kwargs: summary)
+    metrics_path = f"{MOBILE}/portfolio/metrics"
+    assert client.get(metrics_path).status_code == 401
+    assert client.get(metrics_path, headers=owner).status_code == 401
+    result = client.get(metrics_path, headers=device)
+    assert result.status_code == 200 and result.headers["Cache-Control"] == "no-store"
+    assert result.json()["data"]["accounts"][0]["unrealized_pnl"] == {"value": 3, "coverage": "complete"}
+    assert "private_note" not in result.text
+    original = client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]
+    assert set(original) == {"total_assets", "currency", "valuation", "holdings"}
+    assert original["holdings"][0]["currency"] == "USD"
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.get(metrics_path, headers=device).status_code == 401
