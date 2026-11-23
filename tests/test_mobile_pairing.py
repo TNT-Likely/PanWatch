@@ -356,6 +356,37 @@ def test_device_renewal_replays_only_the_issued_grant_after_a_lost_response(inst
     assert _renew(client, next_grant["refresh_token"], "2" * 64).json()["error_code"] == "mobile_device_revoked"
 
 
+def test_phone_discards_only_its_own_device_session(instance):
+    client, sessions = instance
+    owner, existing = _renewable_grant(client, sessions)
+    _, unsaved = _renewable_grant(client, sessions)
+    existing_id, unsaved_id = existing["device_id"], unsaved["device_id"]
+    with sessions() as db:
+        for device_id in (existing_id, unsaved_id):
+            db.add(MobilePushRoute(id=str(uuid4()), device_id=device_id, instance_id=unsaved["instance_id"]))
+        db.commit()
+
+    discard = f"{MOBILE}/session"
+    assert client.delete(discard, headers=owner).status_code == 401
+    assert client.delete(discard, headers=_bearer(unsaved["refresh_token"])).status_code == 401
+    phone = _bearer(unsaved["access_token"])
+    response = client.delete(discard, headers=phone, params={"device_id": existing_id})
+    assert response.status_code == 200 and response.json()["data"] is True
+    assert response.headers["Cache-Control"] == "no-store"
+
+    repeated = client.delete(discard, headers=phone)
+    assert repeated.status_code == 401 and repeated.json()["error_code"] == "mobile_device_revoked"
+    assert client.get(f"{MOBILE}/portfolio", headers=phone).status_code == 401
+    assert _renew(client, unsaved["refresh_token"], PHONE_KEY).status_code == 401
+    assert client.get(f"{MOBILE}/portfolio", headers=_bearer(existing["access_token"])).status_code == 200
+    with sessions() as db:
+        assert db.get(MobileDevice, existing_id).revoked_at is None
+        assert db.get(MobileDevice, unsaved_id).revoked_at is not None
+        routes = {route.device_id: route.retired_at for route in db.scalars(select(MobilePushRoute))}
+        assert routes[existing_id] is None
+        assert routes[unsaved_id] is not None
+
+
 def test_different_renewal_requests_use_the_credential_only_once(instance):
     client, sessions = instance
     _, grant = _renewable_grant(client, sessions)

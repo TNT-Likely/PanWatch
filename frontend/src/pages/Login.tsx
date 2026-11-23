@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { createPath, useLocation, useNavigate, type Path } from 'react-router-dom'
 import { TrendingUp, Lock, Eye, EyeOff, User, Languages } from 'lucide-react'
 import { authApi } from '@panwatch/api'
 import { Button } from '@panwatch/base-ui/components/ui/button'
@@ -9,8 +9,23 @@ import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
 import { changeLocale, normalizeLocale } from '@/i18n'
 
+function destinationAfterLogin(from: Partial<Path> | undefined) {
+  if (typeof from?.pathname !== 'string' || !from.pathname.startsWith('/')) return '/'
+  try {
+    const requested = new URL(createPath(from), window.location.origin)
+    if (requested.origin === window.location.origin && !requested.pathname.startsWith('//')
+      && requested.pathname !== '/login') {
+      return createPath(requested)
+    }
+  } catch {
+    return '/'
+  }
+  return '/'
+}
+
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { state } = useLocation()
   const { toast } = useToast()
   const { t, i18n: i18nInstance } = useTranslation(['auth', 'common', 'settings'])
   const currentLocale = normalizeLocale(i18nInstance.resolvedLanguage || i18nInstance.language)
@@ -58,7 +73,7 @@ export default function LoginPage() {
       localStorage.setItem('token_expires', data.expires_at)
 
       toast(isSetup ? t('auth:messages.setupSuccess') : t('auth:messages.loginSuccess'), 'success')
-      navigate('/')
+      navigate(destinationAfterLogin(state?.from), { replace: true })
     } catch (e) {
       toast(e instanceof Error ? e.message : t('auth:messages.operationFailed'), 'error')
     } finally {

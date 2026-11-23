@@ -327,18 +327,21 @@ def list_devices(db: DB) -> MobileResponse[list[DeviceSummary]]:
     return MobileResponse(data=[DeviceSummary.model_validate(device, from_attributes=True) for device in devices])
 
 
+def _revoke_device(db: Session, device_id: str, now: int) -> None:
+    db.execute(
+        update(MobileDevice).where(MobileDevice.id == device_id, MobileDevice.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    retire_device_push(db, device_id, now)
+
+
 @owner.delete("/devices/{device_id}")
 def revoke_device(device_id: UUID, db: DB) -> MobileResponse[DeviceSummary]:
     key = str(device_id)
-    now = _now()
-    db.execute(
-        update(MobileDevice).where(MobileDevice.id == key, MobileDevice.revoked_at.is_(None))
-        .values(revoked_at=now)
-    )
+    _revoke_device(db, key, _now())
     device = db.get(MobileDevice, key)
     if device is None:
         raise api_error(404, "mobile_device_not_found", "未找到此设备。")
-    retire_device_push(db, key, now)
     result = DeviceSummary.model_validate(device, from_attributes=True)
     db.commit()
     return MobileResponse(data=result)
@@ -373,6 +376,14 @@ def _verify_device(credentials: HTTPAuthorizationCredentials | None, db: Session
     if not set(scopes).issubset(device.scope.split()):
         raise api_error(403, "mobile_scope_required", "请重新连接以授权此功能。", headers=_NO_STORE)
     return device
+
+
+@phone.delete("/session")
+def discard_device_session(credentials: Bearer, db: DB) -> MobileResponse[bool]:
+    device = _verify_device(credentials, db, _PORTFOLIO_SCOPE)
+    _revoke_device(db, device.id, _now())
+    db.commit()
+    return MobileResponse(data=True)
 
 
 def _rotated_token(old_token: str, request_key: str, prefix: str) -> str:
