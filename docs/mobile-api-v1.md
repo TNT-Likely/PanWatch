@@ -66,7 +66,7 @@ An updated client can request `manage_alerts: true` alongside `renewable: true` 
 | Route | Behavior |
 | --- | --- |
 | `GET /alerts` | Read the instance's rules and condition groups with the associated market and symbol. |
-| `POST /alerts` | Create a single price threshold for an existing watchlist symbol. Send `market`, `symbol`, `comparison` (`<` or `>`), `price`, and a UUID `request_id`. Reuse the request ID when retrying an ambiguous response. |
+| `POST /alerts` | Create a one-time price threshold for an existing watchlist symbol. The rule is disabled after it triggers. Send `market`, `symbol`, `comparison` (`<` or `>`), `price`, and a UUID `request_id`. Reuse the request ID when retrying an ambiguous response. |
 | `POST /alerts/{id}/enabled` | Set `enabled` explicitly. The existing price and compound conditions are preserved. |
 | `GET /events` | Read up to 50 recent persisted hits by default. A `limit` from 1 to 200 is supported. Services advertising `symbol_alert_history` accept `market` and `symbol` together to filter the result before applying the limit. |
 | `GET /events/{id}` | Read a specific hit by its instance-local event ID. The response includes the triggering rule, market, symbol, UTC timestamp and the stored observation and condition results. |
@@ -83,6 +83,7 @@ The same alert grant can manage its own push route. An instance enables push by 
 | `PUT /push` | Register or rotate a native `token` for the current device. Send the provider `environment` from the signed application. |
 | `DELETE /push` | Disable the device's route immediately for new events and schedule withdrawal from the gateway. |
 | `GET /push/events/{id}?route_id={route}` | Read the hit for an opaque notification ID through the original device and current route. Retired routes are denied. |
+| `GET /notifications/unread` | Read a boolean for the current device. It covers the full visible inbox, including earlier pages, using the same access and read receipts as `GET /notifications`. |
 
 The gateway receives the registration token and opaque identifiers. Notification delivery sends only a route ID and event ID. When a delivery is recorded for the current device, event responses include `push_delivery` with `pending`, `submitted` or `failed`. `submitted` records platform acceptance. The handset reads alert content from the paired instance.
 

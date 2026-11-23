@@ -26,6 +26,7 @@ from src.modules.mobile.disclosures import create_disclosures_router
 from src.modules.mobile.fact_snapshots import FactTarget, PortfolioContributions, Symbol, build_postmarket_snapshot
 from src.modules.mobile.fact_tasks import create_fact_tasks_router
 from src.modules.mobile.diagnostics import create_diagnostics_router
+from src.modules.mobile.notifications import create_notifications_router
 from src.modules.mobile.portfolio_history import PortfolioLookback, build_portfolio_lookback
 from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
 from src.modules.mobile.push import create_push_router, retire_device_push
@@ -542,6 +543,7 @@ def create_router(
     router.include_router(create_symbol_facts_router(require_symbol_device, aggregate_klines))
     router.include_router(create_disclosures_router(require_symbol_device))
     router.include_router(create_fact_tasks_router(require_fact_task_device, get_portfolio_summary))
+    router.include_router(create_notifications_router(require_fact_task_device, _ALERTS_SCOPE))
     router.include_router(create_diagnostics_router(require_diagnostics_device, read_agent_health))
     router.include_router(phone)
     router.include_router(create_alert_router(require_alert_device))

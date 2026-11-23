@@ -33,7 +33,8 @@ class NotificationService:
     def publish(self, *, source: str, event_type: str, dedupe_key: str, subject_kind: str,
                 subject_id: str, title: str, action: dict, severity='info', attention='informational',
                 group_key='', correlation_id='', toast_eligible=True, occurred_at=None,
-                resolved_at=None, read_at=None, event_id=None, template_params=None, expires_at=None) -> NotificationEvent:
+                resolved_at=None, read_at=None, event_id=None, template_params=None, expires_at=None,
+                recipient_key=RECIPIENT) -> NotificationEvent:
         # SQLite's conflict-aware insert keeps the caller's transaction intact.
         # Do not use a savepoint which can commit before pysqlite starts BEGIN.
         values = dict(source=source, event_type=event_type, dedupe_key=dedupe_key,
@@ -47,7 +48,7 @@ class NotificationService:
         self.db.flush()
         self.db.execute(insert(NotificationEvent).values(**values).on_conflict_do_nothing(index_elements=['dedupe_key']))
         event = self.db.query(NotificationEvent).filter_by(dedupe_key=dedupe_key).one()
-        self.db.execute(insert(NotificationReceipt).values(notification_id=event.id, recipient_key=RECIPIENT, read_at=read_at)
+        self.db.execute(insert(NotificationReceipt).values(notification_id=event.id, recipient_key=recipient_key, read_at=read_at)
                         .on_conflict_do_nothing(index_elements=['notification_id', 'recipient_key']))
         return event
 
