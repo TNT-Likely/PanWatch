@@ -1495,6 +1495,37 @@ class MobileFactTask(Base):
     result = Column(JSON, nullable=True)
 
 
+class MobileAssistantConversation(Base):
+    __tablename__ = "mobile_assistant_conversations"
+    __table_args__ = (Index("ix_mobile_assistant_device_updated", "device_id", "updated_at"),)
+
+    id = Column(String, primary_key=True)
+    device_id = Column(String, ForeignKey("mobile_devices.id", ondelete="CASCADE"), nullable=False)
+    title = Column(String, nullable=False)
+    context = Column(JSON, nullable=True)
+    updated_at = Column(Integer, nullable=False)
+
+
+class MobileAssistantTurn(Base):
+    __tablename__ = "mobile_assistant_turns"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "ordinal"),
+        Index("uq_mobile_assistant_running", "conversation_id", unique=True, sqlite_where=text("state = 'running'")),
+    )
+
+    id = Column(String, primary_key=True)
+    conversation_id = Column(String, ForeignKey("mobile_assistant_conversations.id", ondelete="CASCADE"), nullable=False)
+    ordinal = Column(Integer, nullable=False)
+    text = Column(Text, nullable=False)
+    locale = Column(String, nullable=False)
+    answer = Column(Text, nullable=False, default="")
+    sources = Column(JSON, nullable=False, default=list)
+    state = Column(String, nullable=False)
+    created_at = Column(Integer, nullable=False)
+    attempt = Column(String, nullable=True)
+    deadline = Column(Integer, nullable=True)
+
+
 class MobilePushRoute(Base):
     __tablename__ = "mobile_push_routes"
     __table_args__ = (

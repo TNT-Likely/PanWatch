@@ -108,7 +108,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
     client, sessions = instance
     assert client.get(f"{MOBILE}/capabilities").json()["data"] == {
         "service": "panwatch", "service_version": settings.get_app_version(),
-        "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
+        "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True, "assistant_chat": False,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
         "portfolio_metrics": True, "portfolio_contributions": True, "symbol_facts": True, "catalog_symbol_facts": True, "diagnostics_read": True,
         "disclosures": True, "disclosure_archive": True, "fact_tasks": True, "symbol_alert_history": True,
@@ -1658,3 +1658,63 @@ def test_screening_ranks_actual_observations_within_the_selected_watchlist_marke
     }
     for invalid in ({"sort": "prediction"}, {"direction": "other"}, {"q": "x" * 49}):
         assert client.get(path, params={"market": "US", **invalid}, headers=headers).status_code == 422
+
+
+def test_mobile_chat_stays_device_owned_and_renders_only_selected_facts(instance, monkeypatch):
+    from src.modules.mobile import assistant
+    from src.platform.persistence.models import AIModel, AIService
+
+    client, sessions = instance
+    uri = f"{MOBILE}/assistant/conversations"
+    _, first = _renewable_grant(client, sessions)
+    header = _bearer(first["access_token"])
+    assert first["assistant_chat"] is False
+    assert client.get(uri, headers=header).status_code == 503
+    with sessions() as db:
+        service = AIService(name="Unit test model", base_url="http://127.0.0.1:1/v1")
+        db.add(service)
+        db.flush()
+        model = AIModel(service_id=service.id, name="Test", model="unit-fixture")
+        db.add(model)
+        db.commit()
+        monkeypatch.setenv("MOBILE_ASSISTANT_MODEL_ID", str(model.id))
+
+    class TestModel:
+        invocations = 0
+
+        def __init__(self, *args):
+            self.client = self
+
+        async def close(self):
+            pass
+
+        async def chat_stream(self, messages, **kwargs):
+            TestModel.invocations += 1
+            assert not kwargs.get("tools")
+            yield "token", "F0"
+            yield "token", "1\n"
+            yield "token", "Content that is not in the source."
+            yield "message", {"content": "", "tool_calls": []}
+
+    monkeypatch.setattr(assistant, "AIClient", TestModel)
+    assert client.get(f"{MOBILE}/capabilities").json()["data"]["assistant_chat"]
+    _, second = _renewable_grant(client, sessions)
+    assert second["assistant_chat"]
+    other = _bearer(second["access_token"])
+    thread = uri + "/" + str(uuid4())
+    turn = thread + "/turns/" + str(uuid4())
+    body = {"text": "RSI 的范围是什么？", "context": None, "locale": "zh-CN"}
+    assert client.put(turn, headers=header, json=body).status_code == 200
+    result = client.get(thread, headers=header).json()["data"]
+    assert result["turns"][0]["state"] == "complete"
+    assert "0 至 100" in result["turns"][0]["answer"]
+    assert "not in the source" not in result["turns"][0]["answer"]
+    assert len(result["turns"][0]["sources"]) == 1
+    assert client.put(turn, headers=header, json=body).json()["data"] == result
+    assert TestModel.invocations == 1
+    assert client.put(turn, headers=header, json={**body, "text": "different"}).status_code == 409
+    assert client.get(thread, headers=other).status_code == 404
+    assert client.get(uri, headers=other).json()["data"]["items"] == []
+    assert client.post(turn + "/cancel", headers=other).status_code == 404
+    assert client.get(uri, headers=header).json()["data"]["items"][0]["id"] == result["id"]
+    assert client.get("/api/assistant/conversations", headers=header).status_code in (401, 403)

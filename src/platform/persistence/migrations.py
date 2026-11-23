@@ -2378,6 +2378,13 @@ def _m148_mobile_push_test_minute(conn: Connection) -> None:
     )
 
 
+def _m149_mobile_assistant_conversations(conn: Connection) -> None:
+    from src.platform.persistence.models import MobileAssistantConversation, MobileAssistantTurn
+
+    MobileAssistantConversation.__table__.create(conn, checkfirst=True)
+    MobileAssistantTurn.__table__.create(conn, checkfirst=True)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2427,6 +2434,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(146, "mobile_watchlist_add", _m146_mobile_watchlist_add),
     Migration(147, "mobile_fact_tasks", _m147_mobile_fact_tasks),
     Migration(148, "mobile_push_test_minute", _m148_mobile_push_test_minute),
+    Migration(149, "mobile_assistant_conversations", _m149_mobile_assistant_conversations),
 )
 
 

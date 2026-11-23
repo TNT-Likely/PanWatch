@@ -29,6 +29,7 @@ class Capabilities(BaseModel):
     disclosures: bool = True
     disclosure_archive: bool = True
     fact_tasks: bool = True
+    assistant_chat: bool = False
     symbol_alert_history: bool = True
     screening: bool = True
     screening_metrics: bool = True
@@ -112,6 +113,7 @@ class DeviceGrant(BaseModel):
     disclosures: bool = True
     disclosure_archive: bool = True
     fact_tasks: bool = True
+    assistant_chat: bool = False
     symbol_alert_history: bool = True
     screening: bool = True
     screening_metrics: bool = True
