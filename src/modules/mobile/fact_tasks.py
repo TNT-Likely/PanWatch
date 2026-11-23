@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import or_, select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from src.web.errors import api_error
 logger = logging.getLogger(__name__)
 DB = Annotated[Session, Depends(get_db)]
 _LEASE_SECONDS = 120
+_HISTORY_PAGE_SIZE = 30
 
 
 class FactTaskRequest(BaseModel):
@@ -47,6 +48,11 @@ class FactTaskSummary(BaseModel):
 
 class FactTask(FactTaskSummary):
     result: FactSnapshot | None
+
+
+class FactTaskHistoryPage(BaseModel):
+    items: list[FactTaskSummary]
+    next_before: UUID | None
 
 
 def _now() -> int:
@@ -77,6 +83,17 @@ def _summary(row: MobileFactTask, now: int) -> FactTaskSummary:
 
 def _view(row: MobileFactTask, now: int) -> FactTask:
     return FactTask(**_summary(row, now).model_dump(), result=row.result)
+
+
+def _history_query(device_id: str, phase: FactPhase | None, market: Market | None, symbol: str | None):
+    if (market is None) != (symbol is None):
+        raise api_error(422, "mobile_symbol_identity_required", "请同时提供市场和代码。")
+    query = select(MobileFactTask).where(MobileFactTask.device_id == device_id)
+    if phase is not None:
+        query = query.where(MobileFactTask.phase == phase)
+    if market is not None:
+        query = query.where(MobileFactTask.market == market, MobileFactTask.symbol == symbol)
+    return query.order_by(MobileFactTask.created_at.desc(), MobileFactTask.id.desc())
 
 
 def _not_found():
@@ -145,18 +162,41 @@ def create_fact_tasks_router(require_device, get_portfolio_summary: Callable[[Se
         device: Device, db: DB, on: date | None = None, phase: FactPhase | None = None,
         market: Market | None = None, symbol: Annotated[Symbol | None, Query()] = None,
     ) -> MobileResponse[list[FactTaskSummary]]:
-        if (market is None) != (symbol is None):
-            raise api_error(422, "mobile_symbol_identity_required", "请同时提供市场和代码。")
-        query = select(MobileFactTask).where(MobileFactTask.device_id == device.id)
+        query = _history_query(device.id, phase, market, symbol)
         if on is not None:
             query = query.where(MobileFactTask.created_on == on)
-        if phase is not None:
-            query = query.where(MobileFactTask.phase == phase)
-        if market is not None:
-            query = query.where(MobileFactTask.market == market, MobileFactTask.symbol == symbol)
-        rows = db.scalars(query.order_by(MobileFactTask.created_at.desc(), MobileFactTask.id.desc()).limit(30))
+        rows = db.scalars(query.limit(_HISTORY_PAGE_SIZE))
         now = _now()
         return MobileResponse(data=[_summary(row, now) for row in rows])
+
+    @router.get("/facts/task-history")
+    def history_page(
+        device: Device, db: DB, start_on: date | None = None, end_on: date | None = None,
+        phase: FactPhase | None = None, market: Market | None = None,
+        symbol: Annotated[Symbol | None, Query()] = None, before: UUID | None = None,
+    ) -> MobileResponse[FactTaskHistoryPage]:
+        if start_on is not None and end_on is not None and start_on > end_on:
+            raise api_error(422, "mobile_fact_history_date_order", "开始日期必须早于或等于截止日期。")
+        query = _history_query(device.id, phase, market, symbol)
+        if start_on is not None:
+            query = query.where(MobileFactTask.created_on >= start_on)
+        if end_on is not None:
+            query = query.where(MobileFactTask.created_on <= end_on)
+        if before is not None:
+            cursor = str(before)
+            anchor = db.scalar(query.where(MobileFactTask.id == cursor).with_only_columns(MobileFactTask.created_at))
+            if anchor is None:
+                raise api_error(422, "mobile_fact_history_cursor_invalid", "请重新读取事实任务历史。")
+            query = query.where(or_(
+                MobileFactTask.created_at < anchor,
+                and_(MobileFactTask.created_at == anchor, MobileFactTask.id < cursor),
+            ))
+        rows = list(db.scalars(query.limit(_HISTORY_PAGE_SIZE + 1)))
+        now = _now()
+        items = [_summary(row, now) for row in rows[:_HISTORY_PAGE_SIZE]]
+        return MobileResponse(data=FactTaskHistoryPage(
+            items=items, next_before=items[-1].id if len(rows) > _HISTORY_PAGE_SIZE else None,
+        ))
 
     @router.get("/facts/tasks/{task_id}")
     def detail(task_id: UUID, device: Device, db: DB) -> MobileResponse[FactTask]:

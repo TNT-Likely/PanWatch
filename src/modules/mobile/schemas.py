@@ -22,8 +22,10 @@ class Capabilities(BaseModel):
     password_login: bool
     portfolio_read: bool = True
     portfolio_metrics: bool = True
+    portfolio_overview: bool = True
     portfolio_contributions: bool = True
     symbol_facts: bool = True
+    catalog_symbol_facts: bool = True
     disclosures: bool = True
     disclosure_archive: bool = True
     fact_tasks: bool = True
@@ -34,6 +36,7 @@ class Capabilities(BaseModel):
     diagnostics_read: bool = True
     session_refresh: bool = True
     watchlist_read: bool = True
+    watchlist_overview: bool = True
     alerts_manage: bool = True
 
 
@@ -99,10 +102,13 @@ class DeviceGrant(BaseModel):
     refresh_token: str | None = None
     refresh_expires_at: int | None = None
     watchlist_read: bool = False
+    watchlist_overview: bool = False
     alerts_manage: bool = False
     portfolio_metrics: bool = True
+    portfolio_overview: bool = True
     portfolio_contributions: bool = True
     symbol_facts: bool = True
+    catalog_symbol_facts: bool = True
     disclosures: bool = True
     disclosure_archive: bool = True
     fact_tasks: bool = True
@@ -129,6 +135,15 @@ class Holding(BaseModel):
     quantity: float
     market_value: float | None
     currency: Literal["CNY", "HKD", "USD"]
+
+
+class SymbolHolding(Holding):
+    position_id: int
+    account_id: int
+    account_name: str
+    cost_price: float
+    daily_pnl_cny: float | None
+    unrealized_pnl_cny: float | None
 
 
 class Portfolio(BaseModel):

@@ -9,7 +9,7 @@ import secrets
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
@@ -28,6 +28,7 @@ from src.modules.mobile.fact_tasks import create_fact_tasks_router
 from src.modules.mobile.diagnostics import create_diagnostics_router
 from src.modules.mobile.portfolio_history import PortfolioLookback, build_portfolio_lookback
 from src.modules.mobile.portfolio_metrics import PortfolioMetrics, build_portfolio_metrics
+from src.modules.mobile.portfolio_overview import PortfolioOverview, build_overview, build_portfolio
 from src.modules.mobile.push import create_push_router, retire_device_push
 from src.modules.mobile.symbol_facts import Market, create_symbol_facts_router
 from src.modules.mobile.screening import create_screening_router
@@ -35,7 +36,7 @@ from src.modules.mobile.schemas import (
     Capabilities,
     DeviceGrant,
     DeviceSummary,
-    Holding,
+    SymbolHolding,
     MobileResponse,
     PairingClaim,
     PairingDecision,
@@ -46,6 +47,9 @@ from src.modules.mobile.schemas import (
     Platform,
     Portfolio,
     WatchlistSymbol,
+)
+from src.modules.mobile.watchlist_overview import (
+    PAGE_SIZE, WatchlistOverview, WatchlistTrend, load_watchlist_overview, load_watchlist_trends,
 )
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import MobileDevice, MobileInstallation, MobilePairing, Stock
@@ -259,6 +263,7 @@ def _device_grant(db: Session, device: MobileDevice, token: str, refresh_token: 
         access_token=token, expires_at=device.access_expires_at or device.expires_at,
         refresh_token=refresh_token, refresh_expires_at=device.expires_at if refresh_token else None,
         watchlist_read=_WATCHLIST_SCOPE in scopes,
+        watchlist_overview=_WATCHLIST_SCOPE in scopes,
         alerts_manage=_ALERTS_SCOPE in scopes,
         diagnostics_read=_DIAGNOSTICS_SCOPE in scopes,
         watchlist_manage=_WATCHLIST_ADD_SCOPE in scopes,
@@ -470,25 +475,39 @@ def create_router(
     @router.get("/portfolio")
     def portfolio(credentials: Bearer, db: DB) -> MobileResponse[Portfolio]:
         _verify_device(credentials, db, _PORTFOLIO_SCOPE)
+        return MobileResponse(data=build_portfolio(get_portfolio_summary(db)))
+
+    @router.get("/portfolio/overview")
+    def portfolio_overview(credentials: Bearer, db: DB) -> MobileResponse[PortfolioOverview]:
+        _verify_device(credentials, db, _PORTFOLIO_SCOPE)
+        return MobileResponse(data=build_overview(get_portfolio_summary(db)))
+
+    @router.get("/portfolio/positions")
+    def symbol_positions(
+        credentials: Bearer, db: DB, market: Literal["CN", "HK", "US"],
+        symbol: Annotated[str, Query(min_length=1, max_length=80)],
+    ) -> MobileResponse[list[SymbolHolding]]:
+        _verify_device(credentials, db, _PORTFOLIO_SCOPE)
         summary = get_portfolio_summary(db)
-        holdings = [
-            Holding(
-                symbol=position["symbol"],
+        return MobileResponse(data=[
+            SymbolHolding(
+                symbol=symbol,
                 name=position["name"],
-                market=position["market"],
+                market=market,
                 quantity=position["quantity"],
                 market_value=position["market_value"],
-                currency={"HK": "HKD", "US": "USD"}.get(position["market"], "CNY"),
+                currency={"CN": "CNY", "HK": "HKD", "US": "USD"}[market],
+                position_id=position["id"],
+                account_id=account["id"],
+                account_name=account["name"],
+                cost_price=position["cost_price"],
+                daily_pnl_cny=position["daily_pnl"],
+                # The shared summary omits a zero P/L, but an available valuation makes it known.
+                unrealized_pnl_cny=(position["pnl"] or 0.0) if position["market_value_cny"] is not None else None,
             )
             for account in summary["accounts"] for position in account["positions"]
-        ]
-        covered = sum(holding.market_value is not None for holding in holdings)
-        valuation = "complete"
-        if covered < len(holdings):
-            valuation = "partial" if covered else "unavailable"
-        return MobileResponse(data=Portfolio(
-            total_assets=summary["total"]["total_assets"], valuation=valuation, holdings=holdings,
-        ))
+            if position["market"] == market and position["symbol"] == symbol
+        ])
 
     @router.get("/portfolio/metrics")
     def portfolio_metrics(credentials: Bearer, db: DB) -> MobileResponse[PortfolioMetrics]:
@@ -499,13 +518,22 @@ def create_router(
     def portfolio_contributions(
         credentials: Bearer, db: DB,
         market: Market | None = None, symbol: Annotated[Symbol | None, Query()] = None,
+        account_id: Annotated[int | None, Query(ge=1)] = None,
     ) -> MobileResponse[PortfolioContributions]:
         _verify_device(credentials, db, _PORTFOLIO_SCOPE)
         if (market is None) != (symbol is None):
             raise api_error(400, "mobile_contribution_target_incomplete", "请同时提供市场和标的代码。")
         target = FactTarget(market=market, symbol=symbol) if market is not None and symbol is not None else None
-        snapshot = build_postmarket_snapshot(get_portfolio_summary(db), target)
-        return MobileResponse(data=PortfolioContributions(**snapshot.model_dump(), computed_at=datetime.now(UTC)))
+        summary = get_portfolio_summary(db)
+        if account_id is not None:
+            account = next((row for row in summary["accounts"] if row["id"] == account_id), None)
+            if account is None:
+                raise api_error(404, "mobile_portfolio_account_not_found", "此账户不可用。")
+            summary = {"accounts": [account], "total": account}
+        snapshot = build_postmarket_snapshot(summary, target)
+        return MobileResponse(data=PortfolioContributions(
+            **snapshot.model_dump(), computed_at=datetime.now(UTC), account_id=account_id,
+        ))
 
     @router.get("/portfolio/metrics/history")
     def portfolio_history(
@@ -522,6 +550,24 @@ def create_router(
         _verify_device(credentials, db, _WATCHLIST_SCOPE)
         rows = db.execute(select(Stock.symbol, Stock.name, Stock.market).order_by(Stock.sort_order, Stock.id))
         return MobileResponse(data=[WatchlistSymbol(symbol=symbol, name=name, market=market) for symbol, name, market in rows])
+
+    @router.get("/symbols/watchlist/overview")
+    def watchlist_overview(
+        credentials: Bearer, db: DB, offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=PAGE_SIZE)] = PAGE_SIZE,
+    ) -> MobileResponse[WatchlistOverview]:
+        device = _verify_device(credentials, db, _WATCHLIST_SCOPE)
+        return MobileResponse(data=load_watchlist_overview(
+            db, offset=offset, limit=limit, read_alerts=_ALERTS_SCOPE in device.scope.split(),
+        ))
+
+    @router.get("/symbols/watchlist/trends")
+    def watchlist_trends(
+        credentials: Bearer, db: DB, offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=PAGE_SIZE)] = PAGE_SIZE,
+    ) -> MobileResponse[list[WatchlistTrend]]:
+        _verify_device(credentials, db, _WATCHLIST_SCOPE)
+        return MobileResponse(data=load_watchlist_trends(db, offset=offset, limit=limit))
 
     def require_alert_device(credentials: Bearer, db: DB) -> MobileDevice:
         return _verify_device(credentials, db, _ALERTS_SCOPE)

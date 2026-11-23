@@ -35,6 +35,7 @@ class SourceHealth(BaseModel):
     name: str
     kind: str
     provider: str
+    priority: int | None
     enabled: bool
     provider_samples: int = Field(ge=0)
     provider_success_rate: FiniteFloat | None = Field(ge=0, le=1)
@@ -45,6 +46,7 @@ class SourceProbe(BaseModel):
     passed: bool
     checked_at: datetime
     duration_ms: int = Field(ge=0)
+    sample_count: int | None = Field(default=None, ge=0)
 
 
 class Diagnostics(BaseModel):
@@ -77,7 +79,8 @@ def create_diagnostics_router(require_device, read_agent_health: Callable[[Sessi
             stats = health.get(row.provider, {})
             last_success = stats.get("last_success_at", 0)
             sources.append(SourceHealth(
-                id=row.id, name=row.name, kind=row.type, provider=row.provider, enabled=bool(row.enabled),
+                id=row.id, name=row.name, kind=row.type, provider=row.provider,
+                priority=row.priority, enabled=bool(row.enabled),
                 provider_samples=stats.get("count", 0), provider_success_rate=stats.get("success_rate"),
                 provider_last_success=datetime.fromtimestamp(last_success, UTC) if last_success > 0 else None,
             ))
@@ -96,6 +99,7 @@ def create_diagnostics_router(require_device, read_agent_health: Callable[[Sessi
             raise api_error(504, "mobile_source_timeout", "数据源检查超时。") from None
         return MobileResponse(data=SourceProbe(
             passed=bool(result.success), checked_at=datetime.now(UTC), duration_ms=max(0, result.duration_ms),
+            sample_count=result.count if result.success else None,
         ))
 
     return router
