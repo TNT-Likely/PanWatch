@@ -87,7 +87,8 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
   const opener = useRef<HTMLElement | null>(null)
   const step = status?.tour_step && status.tour_step !== 'done' ? status.tour_step : null
   const mainTrack = !status?.active_track || status.active_track === 'main'
-  const active = mainTrack && !!step && !status?.deferred && !welcome
+  const visitingDeviceSettings = location.pathname === '/settings' && location.hash === '#sec-mobile'
+  const active = mainTrack && !!step && !status?.deferred && !welcome && !visitingDeviceSettings
   const onRoute = !!step && location.pathname === paths[step]
 
   const refresh = useCallback(async () => {
@@ -107,10 +108,10 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
     return () => { alive.current = false; revision.current++; window.removeEventListener('focus', onFocus) }
   }, [refresh])
   useEffect(() => {
-    if (!status || status.started || status.deferred) return
+    if (!status || status.started || status.deferred || visitingDeviceSettings) return
     setWelcome(true)
     navigate('/getting-started', { replace: true })
-  }, [status, navigate])
+  }, [status, navigate, visitingDeviceSettings])
   useEffect(() => {
     if (!active && status?.analysis?.status !== 'running') return
     const timer = window.setInterval(() => { if (!lock.current) void refresh() }, 3000)
@@ -245,7 +246,7 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
   const instructionHost = target?.dialog?.querySelector('[data-tour-instructions]')
   return <TourContext.Provider value={value}>
     {children}
-    <FeatureTour disabled={welcome} />
+    <FeatureTour disabled={welcome || visitingDeviceSettings} />
     {active && onRoute && target && !target.dialog && createPortal(<svg className="pointer-events-none fixed inset-0 z-[70] h-full w-full" aria-hidden="true">
       <defs><mask id="guided-tour-mask"><rect width="100%" height="100%" fill="white" /><rect x={target.rect.left - 6} y={target.rect.top - 6} width={target.rect.width + 12} height={target.rect.height + 12} rx="12" fill="black" /></mask></defs>
       <rect width="100%" height="100%" fill="rgba(0,0,0,.58)" mask="url(#guided-tour-mask)" />
@@ -281,7 +282,7 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
         </div>
       </DialogContent>
     </Dialog>
-    <Dialog open={mainTrack && status?.tour_step === 'done' && !status.deferred} onOpenChange={open => { if (!open) void operation(() => onboardingApi.update({ deferred: true })) }}>
+    <Dialog open={!visitingDeviceSettings && mainTrack && status?.tour_step === 'done' && !status.deferred} onOpenChange={open => { if (!open) void operation(() => onboardingApi.update({ deferred: true })) }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{t('tour.doneTitle')}</DialogTitle><DialogDescription>{t('tour.doneDescription')}</DialogDescription></DialogHeader>
         <p className="text-sm text-muted-foreground">{t('gettingStarted.progress', { done: status?.completed_count || 0, total: status?.required_count || 0 })}</p>
