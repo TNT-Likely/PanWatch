@@ -42,6 +42,15 @@ class Disclosures(BaseModel):
     items: list[Disclosure]
 
 
+class ArchivedDisclosure(Disclosure):
+    archive_agents: list[ArchiveAgent]
+
+
+class DisclosureArchive(BaseModel):
+    state: Literal["ready"]
+    items: list[ArchivedDisclosure]
+
+
 def _verified_disclosure(
     target: WatchlistSymbol, source: object, article: object, kind: object, published: date, url: object,
 ) -> Disclosure | None:
@@ -106,21 +115,23 @@ def create_disclosures_router(require_device) -> APIRouter:
         db: DB, on: date, agent: ArchiveAgent | None = None,
         market: Literal["CN", "HK", "US"] = "CN",
         symbol: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
-    ) -> MobileResponse[Disclosures]:
+        include_agents: bool = False,
+    ) -> MobileResponse[DisclosureArchive | Disclosures]:
         if market != "CN":
             return MobileResponse(data=Disclosures(state="market_unavailable", items=[]))
         universe = _cn_universe(db, symbol)
         if not universe:
             return MobileResponse(data=Disclosures(state="ready", items=[]))
-        runs = db.scalars(
-            select(AgentContextRun.context_payload).where(
-                AgentContextRun.analysis_date == on.isoformat(),
-                AgentContextRun.agent_name.in_((agent,) if agent else _ARCHIVE_AGENTS),
-                AgentContextRun.stock_symbol == "*",
-            ).order_by(AgentContextRun.id.desc()).limit(30)
-        )
-        items = {}
-        for payload in runs:
+        query = select(AgentContextRun.agent_name, AgentContextRun.context_payload).where(
+            AgentContextRun.analysis_date == on.isoformat(),
+            AgentContextRun.agent_name.in_((agent,) if agent else _ARCHIVE_AGENTS),
+            AgentContextRun.stock_symbol == "*",
+        ).order_by(AgentContextRun.id.desc())
+        # A busy intraday workflow can otherwise hide another agent's earlier recording of the same article.
+        runs = db.execute(query.execution_options(yield_per=30) if include_agents else query.limit(30))
+        items: dict[str, Disclosure] = {}
+        recorded_by: dict[str, set[ArchiveAgent]] = {}
+        for agent_name, payload in runs:
             symbols = payload.get("symbols") if isinstance(payload, dict) else None
             if not isinstance(symbols, dict):
                 continue
@@ -145,6 +156,14 @@ def create_disclosures_router(require_device) -> APIRouter:
                                                 event.get("event_type"), published, event.get("url"))
                     if item:
                         items.setdefault(item.id, item)
-        return MobileResponse(data=Disclosures(state="ready", items=_latest_items(items)))
+                        if include_agents:
+                            recorded_by.setdefault(item.id, set()).add(agent_name)
+        latest = _latest_items(items)
+        if include_agents:
+            archived = [
+                ArchivedDisclosure(**item.model_dump(), archive_agents=sorted(recorded_by[item.id])) for item in latest
+            ]
+            return MobileResponse(data=DisclosureArchive(state="ready", items=archived))
+        return MobileResponse(data=Disclosures(state="ready", items=latest))
 
     return router

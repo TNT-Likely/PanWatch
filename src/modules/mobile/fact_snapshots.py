@@ -2,9 +2,10 @@
 
 from collections import defaultdict
 from collections.abc import Callable
+from datetime import date
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, Field, FiniteFloat, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -47,6 +48,8 @@ class IntradaySnapshot(BaseModel):
 class PositionContribution(BaseModel):
     target: WatchlistSymbol
     daily_pnl: Metric
+    quote_price: FiniteFloat | None = None
+    quote_date: date | None = None
 
 
 class PostmarketSnapshot(BaseModel):
@@ -60,6 +63,7 @@ class PostmarketSnapshot(BaseModel):
 
 class PortfolioContributions(PostmarketSnapshot):
     computed_at: AwareDatetime
+    account_id: int | None = None
 
 
 FactSnapshot = Annotated[PremarketSnapshot | IntradaySnapshot | PostmarketSnapshot, Field(discriminator="phase")]
@@ -109,10 +113,18 @@ def build_postmarket_snapshot(summary: dict, target: FactTarget | None = None) -
     by_symbol = defaultdict(list)
     for item in positions:
         by_symbol[item["market"], item["symbol"]].append(item)
-    contributions = [
-        PositionContribution(target=WatchlistSymbol.model_validate(group[0]), daily_pnl=_daily_pnl(group))
-        for group in by_symbol.values()
-    ]
+    contributions = []
+    for group in by_symbol.values():
+        position = group[0]
+        price = position.get("current_price")
+        try:
+            quote_date = date.fromisoformat(position.get("quote_date") or "")
+        except (TypeError, ValueError):
+            quote_date = None
+        contributions.append(PositionContribution(
+            target=WatchlistSymbol.model_validate(position), daily_pnl=_daily_pnl(group),
+            quote_price=price if _finite(price) else None, quote_date=quote_date,
+        ))
     total = (_daily_pnl(positions) if target is not None
              else _metric(positions, "daily_pnl", summary["total"].get("total_daily_pnl", 0 if not positions else None)))
     return PostmarketSnapshot(

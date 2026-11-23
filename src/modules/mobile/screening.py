@@ -1,4 +1,4 @@
-"""Objective candidate search and explicit additions to the paired watchlist."""
+"""Objective candidate search and explicit updates to the paired watchlist."""
 
 from datetime import date
 from math import isfinite
@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, FiniteFloat, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from src.modules.market.watchlist import add_stock
@@ -14,7 +14,7 @@ from src.modules.mobile.schemas import MobileResponse, WatchlistSymbol
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.stock_list import search_stocks
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import Stock
+from src.platform.persistence.models import Position, PriceAlertHit, PriceAlertRule, Stock, StockAgent
 from src.web.errors import api_error
 
 DB = Annotated[Session, Depends(get_db)]
@@ -46,12 +46,12 @@ class Screening(BaseModel):
     direction: SortDirection
 
 
-class WatchlistAdd(BaseModel):
+class WatchlistTarget(BaseModel):
     market: Market
     symbol: SearchTerm
 
 
-def _known_symbols(query: str, market: Market) -> dict[str, WatchlistSymbol]:
+def catalog_symbols(query: str, market: Market) -> dict[str, WatchlistSymbol]:
     candidates = {}
     for item in search_stocks(query, market, limit=20):
         if item.get("market") != market:
@@ -101,7 +101,7 @@ def create_screening_router(require_reader, require_writer) -> APIRouter:
     ) -> MobileResponse[Screening]:
         if min_price is not None and max_price is not None and min_price > max_price:
             raise api_error(400, "mobile_price_range_invalid", "价格区间无效。")
-        universe = _known_symbols(q, market) if q else _watchlist_symbols(db, market)
+        universe = catalog_symbols(q, market) if q else _watchlist_symbols(db, market)
         currency = _CURRENCIES[market]
         if not universe:
             return MobileResponse(data=Screening(
@@ -136,16 +136,37 @@ def create_screening_router(require_reader, require_writer) -> APIRouter:
         ))
 
     @router.post("/symbols/watchlist/add", dependencies=[Depends(require_writer)])
-    def add(body: WatchlistAdd, db: DB) -> MobileResponse[WatchlistSymbol]:
+    def add(body: WatchlistTarget, db: DB) -> MobileResponse[WatchlistSymbol]:
         current = select(Stock).where(Stock.market == body.market, Stock.symbol == body.symbol).order_by(Stock.id).limit(1)
         row = db.scalar(current)
         if row is None:
-            candidate = _known_symbols(body.symbol, body.market).get(body.symbol)
+            candidate = catalog_symbols(body.symbol, body.market).get(body.symbol)
             if candidate is None:
                 raise api_error(404, "mobile_symbol_not_found", "此标的不可用。")
             row = add_stock(db, name=candidate.name, market=body.market, symbol=candidate.symbol) or db.scalar(current)
             if row is None:
                 raise api_error(409, "mobile_watchlist_changed", "自选已变更，请重试。")
         return MobileResponse(data=WatchlistSymbol.model_validate(row, from_attributes=True))
+
+    @router.post("/symbols/watchlist/remove", dependencies=[Depends(require_writer)])
+    def remove(body: WatchlistTarget, db: DB) -> MobileResponse[bool]:
+        matches = (Stock.market == body.market, Stock.symbol == body.symbol)
+        targets = select(Stock.id).where(*matches).correlate(None)
+        legacy_holdings = select(Stock.id).where(
+            *matches, or_(Stock.quantity != 0, Stock.cost_price != 0, Stock.invested_amount != 0),
+        ).correlate(None).exists()
+        references = [
+            select(model.id).where(model.stock_id.in_(targets)).exists()
+            for model in (Position, StockAgent, PriceAlertRule, PriceAlertHit)
+        ]
+        # Keep the dependency checks and deletion in the same SQLite write statement.
+        deleted = db.execute(
+            delete(Stock).where(*matches, ~legacy_holdings, *(~reference for reference in references))
+            .execution_options(synchronize_session=False),
+        )
+        if deleted.rowcount == 0 and db.scalar(targets.limit(1)) is not None:
+            raise api_error(409, "mobile_watchlist_in_use", "此自选仍关联持仓、盯盘规则或 Agent。")
+        db.commit()
+        return MobileResponse(data=True)
 
     return router

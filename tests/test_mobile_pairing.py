@@ -1,6 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from src.bootstrap.application import app
 from src.modules.administration.api import auth, settings
 from src.modules.market import alert_delivery, data_collector, price_alert_engine
-from src.modules.mobile import api as mobile, push
+from src.modules.mobile import api as mobile, push, watchlist_overview
 from src.modules.portfolio.api import accounts
 from src.platform.marketdata import marketdata_client
 from src.platform.persistence.database import Base, get_db
@@ -110,9 +110,10 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
         "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True,
         "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
-        "portfolio_metrics": True, "portfolio_contributions": True, "symbol_facts": True, "diagnostics_read": True,
+        "portfolio_metrics": True, "portfolio_contributions": True, "symbol_facts": True, "catalog_symbol_facts": True, "diagnostics_read": True,
         "disclosures": True, "disclosure_archive": True, "fact_tasks": True, "symbol_alert_history": True,
         "screening": True, "screening_metrics": True, "watchlist_manage": True,
+        "portfolio_overview": True, "watchlist_overview": True,
     }
     assert client.post(f"{MOBILE}/pairings", json={"origin": ORIGIN}).status_code == 403
     owner = _owner(sessions)
@@ -304,11 +305,99 @@ def test_read_only_portfolio_reports_partial_valuation_and_refreshes_real_positi
              "market_value": None, "currency": "USD"},
         ],
     }
+    with monkeypatch.context() as context:
+        context.setattr(accounts, "daily_quote_fields", lambda *_: {
+            "change_pct": None, "daily_move_status": "unavailable", "quote_date": None,
+        })
+        combined = client.get(f"{MOBILE}/portfolio/overview", headers=device).json()["data"]
+    assert {key: combined[key] for key in result} == result
+    assert combined["available_funds_cny"] == 50
+    assert combined["market_value_cny"] == 20
+    assert combined["today_pnl"]["value"] is None
+    assert [(row["target"]["market"], row["target"]["symbol"]) for row in combined["contributions"]] == [
+        ("CN", "SAME"), ("US", "SAME"),
+    ]
+    positions_path = f"{MOBILE}/portfolio/positions"
+    assert client.get(positions_path, params={"market": "CN", "symbol": "SAME"}).status_code == 401
+    china_details = client.get(positions_path, headers=device, params={"market": "CN", "symbol": "SAME"}).json()["data"]
+    us_details = client.get(positions_path, headers=device, params={"market": "US", "symbol": "SAME"}).json()["data"]
+    assert len(china_details) == len(us_details) == 1
+    assert china_details[0]["currency"] == "CNY" and china_details[0]["cost_price"] == 99
+    assert china_details[0]["account_name"] == "Private account"
+    assert china_details[0]["unrealized_pnl_cny"] == -178
+    assert us_details[0]["currency"] == "USD" and us_details[0]["unrealized_pnl_cny"] is None
+    assert client.get(positions_path, headers=device, params={"market": "HK", "symbol": "SAME"}).json()["data"] == []
     with sessions() as db:
         position = db.scalar(select(Position).where(Position.stock_id == china_id))
         position.quantity = 3
+        position.cost_price = 10
         db.commit()
     assert client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]["total_assets"] == 80
+    break_even = client.get(positions_path, headers=device, params={"market": "CN", "symbol": "SAME"}).json()["data"]
+    assert break_even[0]["unrealized_pnl_cny"] == 0
+
+
+def test_watchlist_cards_scope_alert_counts_and_observations_to_each_market(instance, monkeypatch):
+    from marketdata.cache import TTLCache
+    from marketdata.types import Bar
+
+    client, sessions = instance
+    owner = _owner(sessions)
+
+    def pair(*, renewable=False, alerts=False):
+        qr = _start(client, owner)
+        root = f"{MOBILE}/pairings/{qr['pairing_id']}"
+        _approve(client, owner, root, qr, renewable=renewable, manage_alerts=alerts)
+        return _bearer(_exchange(client, root).json()["data"]["access_token"])
+
+    with sessions() as db:
+        cn = Stock(symbol="SAME", name="China fixture", market="CN", sort_order=1)
+        us = Stock(symbol="SAME", name="US fixture", market="US", sort_order=2)
+        db.add_all([cn, us])
+        db.flush()
+        db.add_all([
+            PriceAlertRule(stock_id=cn.id, name="CN enabled", enabled=True),
+            PriceAlertRule(stock_id=cn.id, name="CN paused", enabled=False),
+        ])
+        db.commit()
+    no_watchlist = pair()
+    reader = pair(renewable=True)
+    with_alerts = pair(renewable=True, alerts=True)
+    path = f"{MOBILE}/symbols/watchlist"
+    monkeypatch.setattr(watchlist_overview, "_trend_cache", TTLCache())
+    monkeypatch.setattr(watchlist_overview, "md_quote_rows", lambda symbols, market: [
+        {"market": "CN", "symbol": "SAME", "current_price": 99.7, "quote_date": "2026-11-20", "source": "isolated"},
+    ])
+
+    fetch_calls = []
+
+    def closes(symbol, *, market, days):
+        fetch_calls.append((market, symbol, days))
+        if market == "US":
+            raise RuntimeError("unavailable fixture")
+        return [Bar(day, price, price, price, price) for day, price in [
+            ("2026-11-20", 100), ("2026-11-19", 99.7), ("invalid", 1),
+        ]], "isolated-trend"
+
+    monkeypatch.setattr(watchlist_overview, "get_market_data", lambda: SimpleNamespace(klines_with_vendor=closes))
+    assert client.get(f"{path}/overview", headers=no_watchlist).status_code == 403
+    assert client.get(f"{path}/trends", headers=no_watchlist).status_code == 403
+    assert client.get(f"{path}/overview?limit=7", headers=reader).status_code == 422
+    public = client.get(f"{path}/overview?limit=1", headers=reader).json()["data"]
+    assert public["total"] == 2 and public["next_offset"] == 1
+    assert public["enabled_alerts"] is None and public["items"][0]["enabled_alerts"] is None
+    assert public["items"][0]["quote"]["price"] == 99.7
+    enriched = client.get(f"{path}/overview", headers=with_alerts).json()["data"]
+    assert enriched["enabled_alerts"] == 1 and enriched["next_offset"] is None
+    assert [(r["target"]["market"], r["enabled_alerts"]) for r in enriched["items"]] == [("CN", 1), ("US", 0)]
+    assert enriched["items"][1]["quote"] is None and enriched["items"][1]["currency"] == "USD"
+    trends = client.get(f"{path}/trends", headers=reader).json()["data"]
+    assert trends[0]["source"] == "isolated-trend" and trends[0]["points"] == [
+        {"date": "2026-11-19", "price": 99.7}, {"date": "2026-11-20", "price": 100},
+    ]
+    assert trends[1]["source"] is None and trends[1]["points"] == []
+    assert client.get(f"{path}/trends?offset=1", headers=reader).json()["data"] == trends[1:]
+    assert sorted(fetch_calls) == [("CN", "SAME", 14), ("US", "SAME", 14)]
 
 
 def _renewable_grant(client, sessions, *, manage_alerts=False, read_diagnostics=False, manage_watchlist=False):
@@ -921,6 +1010,7 @@ def test_portfolio_metrics_use_same_device_scope_and_preserve_original_response(
     assert client.get(metrics_path, headers=owner).status_code == 401
     result = client.get(metrics_path, headers=device)
     assert result.status_code == 200 and result.headers["Cache-Control"] == "no-store"
+    assert result.json()["data"]["account_contributions"] is True
     assert result.json()["data"]["accounts"][0]["unrealized_pnl"] == {"value": 3, "coverage": "complete"}
     assert "private_note" not in result.text
     original = client.get(f"{MOBILE}/portfolio", headers=device).json()["data"]
@@ -952,6 +1042,7 @@ def test_portfolio_contributions_are_scoped_to_real_holdings_and_quote_coverage(
         america = Stock(symbol="SAME", market="US", name="US fixture")
         db.add_all([first, second, disabled, china, america, Stock(symbol="UNHELD", market="CN", name="Watchlist only")])
         db.flush()
+        first_id, second_id, disabled_id = first.id, second.id, disabled.id
         db.add_all([
             Position(account_id=first.id, stock_id=china.id, quantity=2, cost_price=10),
             Position(account_id=second.id, stock_id=china.id, quantity=4, cost_price=10),
@@ -962,7 +1053,9 @@ def test_portfolio_contributions_are_scoped_to_real_holdings_and_quote_coverage(
 
     monkeypatch.setattr(accounts, "get_usd_cny_rate", lambda: 7)
     monkeypatch.setattr(trading_calendar, "market_status", lambda *_: "trading")
-    observations = {"CN": {"symbol": "SAME", "current_price": 12, "prev_close": 10}}
+    quote_time = datetime(2026, 11, 20, 12, tzinfo=UTC)
+    monkeypatch.setattr(trading_calendar, "_now_in_market_tz", lambda _: quote_time)
+    observations = {"CN": {"symbol": "SAME", "current_price": 12, "prev_close": 10, "quote_date": "2026-11-20"}}
     monkeypatch.setattr(accounts, "md_quote_rows", lambda symbols, market: [observations[market]] if market in observations else [])
 
     before = datetime.now(UTC)
@@ -973,10 +1066,12 @@ def test_portfolio_contributions_are_scoped_to_real_holdings_and_quote_coverage(
     assert stamp.utcoffset() == timedelta(0) and before <= stamp <= datetime.now(UTC)
     assert china_data == {
         "phase": "postmarket", "state": "ready", "currency": "CNY", "basis": "current_holdings",
+        "account_id": None,
         "total_daily_pnl": {"value": 12, "coverage": "complete"},
         "contributions": [{
             "target": {"symbol": "SAME", "market": "CN", "name": "China fixture"},
             "daily_pnl": {"value": 12, "coverage": "complete"},
+            "quote_price": 12, "quote_date": "2026-11-20",
         }],
     }
 
@@ -986,12 +1081,23 @@ def test_portfolio_contributions_are_scoped_to_real_holdings_and_quote_coverage(
     assert missing["contributions"] == [{
         "target": {"symbol": "SAME", "market": "US", "name": "US fixture"},
         "daily_pnl": {"value": None, "coverage": "unavailable"},
+        "quote_price": None, "quote_date": None,
     }]
     empty = client.get(path, params={"market": "CN", "symbol": "UNHELD"}, headers=headers).json()["data"]
     assert empty["state"] == "empty" and empty["contributions"] == []
     partial = client.get(path, headers=headers).json()["data"]
     assert partial["state"] == "partial"
     assert partial["total_daily_pnl"] == {"value": None, "coverage": "partial"}
+
+    first_scope = client.get(path, headers=headers, params={"account_id": first_id}).json()["data"]
+    assert first_scope["account_id"] == first_id and first_scope["state"] == "ready"
+    assert first_scope["total_daily_pnl"] == {"value": 4, "coverage": "complete"}
+    assert [(row["target"]["market"], row["daily_pnl"]["value"]) for row in first_scope["contributions"]] == [("CN", 4)]
+    second_china = client.get(path, headers=headers, params={"account_id": second_id, "market": "CN", "symbol": "SAME"})
+    assert second_china.json()["data"]["total_daily_pnl"] == {"value": 8, "coverage": "complete"}
+    assert client.get(path, headers=headers, params={"account_id": disabled_id}).status_code == 404
+    assert client.get(path, headers=headers, params={"account_id": disabled_id + 99}).status_code == 404
+    assert client.get(path, headers=headers, params={"account_id": 0}).status_code == 422
 
     observations["US"] = {"symbol": "SAME", "current_price": 10, "prev_close": 12}
     whole = client.get(path, headers=headers).json()["data"]
@@ -1015,7 +1121,8 @@ def test_diagnostics_preserve_explicit_scope_and_hide_provider_internals(instanc
         agent = AgentConfig(name="diagnostic-fixture", display_name="Synthetic agent", config={"prompt": sentinel})
         db.add(agent)
         db.add(AgentRun(agent_name=agent.name, status="failed", error=sentinel, result=sentinel))
-        source = DataSource(name="Synthetic source", type="quote", provider="fixture", config={"secret": sentinel})
+        source = DataSource(name="Synthetic source", type="quote", provider="fixture", priority=3,
+                            config={"secret": sentinel})
         db.add(source)
         db.commit()
         source_id = source.id
@@ -1027,21 +1134,24 @@ def test_diagnostics_preserve_explicit_scope_and_hide_provider_internals(instanc
 
     async def probe(source):
         probes.append(source.id)
-        return SimpleNamespace(success=False, duration_ms=7, error=sentinel)
+        return SimpleNamespace(success=len(probes) > 1, count=3, duration_ms=7, error=sentinel)
 
     monkeypatch.setattr(data_collector, "get_collector_manager", lambda: SimpleNamespace(test_source=probe))
     response = client.get(base, headers=device)
     assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
     assert sentinel not in response.text
     data = response.json()["data"]
-    assert data["sources"][0]["provider_success_rate"] == 0.75
+    assert data["sources"][0]["provider_success_rate"] == 0.75 and data["sources"][0]["priority"] == 3
     assert data["agents"][0]["label"] == "Synthetic agent" and data["agents"][0]["result"] == "failed"
     path = f"{base}/sources/{source_id}/test"
     assert client.post(path, headers=owner).status_code == 401 and not probes
     tested = client.post(path, headers=device)
     assert tested.status_code == 200 and sentinel not in tested.text
     assert tested.json()["data"]["passed"] is False and tested.json()["data"]["duration_ms"] == 7
-    assert probes == [source_id]
+    assert tested.json()["data"]["sample_count"] is None
+    repeated = client.post(path, headers=device)
+    assert repeated.json()["data"]["sample_count"] == 3 and sentinel not in repeated.text
+    assert probes == [source_id, source_id]
     rotated = _renew(client, grant["refresh_token"], "e" * 64).json()["data"]
     assert rotated["diagnostics_read"] is True
     assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
@@ -1051,8 +1161,9 @@ def test_diagnostics_preserve_explicit_scope_and_hide_provider_internals(instanc
 def test_symbol_facts_keep_market_identity_and_aggregate_real_bar_periods(instance, monkeypatch):
     from datetime import date, timedelta
     from marketdata.types import Bar
-    from src.modules.mobile import symbol_facts
+    from src.modules.mobile import screening, symbol_facts
 
+    monkeypatch.setattr(screening, "search_stocks", lambda *_args, **_kwargs: [])
     client, sessions = instance
     _, current = _renewable_grant(client, sessions)
     with sessions() as db:
@@ -1070,10 +1181,16 @@ def test_symbol_facts_keep_market_identity_and_aggregate_real_bar_periods(instan
         ]
 
     def bars(symbol, *, market, days):
+        assert symbol == "SAME" and days == 360
         price = 100 if market == "US" else 10
+        count = 40 if market == "US" else 24
         data = [
-            Bar((date(2026, 9, 1) + timedelta(days=index)).isoformat(), price, price + index, price + index + 1, price - 1)
-            for index in range(24)
+            Bar(
+                (date(2026, 9, 1) + timedelta(days=index)).isoformat(),
+                price, price + index, price + index + 1, price - 1,
+                0 if market == "CN" and index == count - 1 else 100 * (index + 1),
+            )
+            for index in range(count)
         ]
         return data, f"{market.lower()}-bars"
 
@@ -1089,12 +1206,26 @@ def test_symbol_facts_keep_market_identity_and_aggregate_real_bar_periods(instan
     result = us.json()["data"]
     assert result["target"]["market"] == "US" and result["currency"] == "USD"
     assert result["quote"]["price"] == 125 and result["quote"]["source"] == "us-fixture"
-    assert result["bars_source"] == "us-bars" and len(result["bars"]) == 24
-    assert result["sma20_daily"] == 113.5
+    assert result["bars_source"] == "us-bars" and len(result["bars"]) == 40
+    assert result["bars"][-1]["volume"] == 4000
+    assert result["sma20_daily"] == 129.5
+    technicals = result["technicals_daily"]
+    assert technicals["as_of"] == "2026-10-10"
+    assert technicals["macd_hist"] > 0 and technicals["rsi6"] == 100
+    assert len(technicals["macd_history"]) == 8
+    assert technicals["macd_history"][-1] == technicals["macd_hist"]
+    assert technicals["volume_ratio_5d"] == pytest.approx(4000 / 3800)
+    us_month = client.get(f"{path}/US/SAME?interval=1m", headers=device).json()["data"]
+    assert us_month["bars"][-1]["volume"] == 35500
+    assert us_month["technicals_daily"] == technicals
     cn = client.get(f"{path}/CN/SAME?interval=1w", headers=device).json()["data"]
     assert cn["target"]["market"] == "CN" and cn["currency"] == "CNY"
     assert cn["quote"]["price"] == 18 and cn["bars_source"] == "cn-bars"
     assert len(cn["bars"]) == 4 and cn["bars"][-1]["close"] == 33
+    assert cn["bars"][-1]["volume"] is None
+    assert cn["technicals_daily"]["volume_ratio_5d"] is None
+    assert cn["technicals_daily"]["macd_hist"] is None
+    assert cn["technicals_daily"]["macd_history"] == []
 
 
 def test_disclosures_project_only_typed_facts_and_verified_source_links(instance, monkeypatch):
@@ -1269,6 +1400,60 @@ def test_fact_task_resumes_same_id_and_preserves_device_bound_history(instance, 
     assert client.get(inbox, headers=auth).status_code == 401
 
 
+def test_fact_history_range_paginates_with_device_bound_cursors(instance):
+    from src.platform.persistence.models import MobileFactTask
+
+    client, sessions = instance
+    _, device = _renewable_grant(client, sessions)
+    _, other = _renewable_grant(client, sessions)
+    auth = _bearer(device["access_token"])
+    start, end = date(2026, 11, 20), date(2026, 11, 21)
+
+    def row(day, *, owner=device["device_id"], phase="intraday", market="CN"):
+        return MobileFactTask(
+            id=str(uuid4()), device_id=owner, phase=phase, market=market, symbol="SAME", state="complete",
+            created_on=day, created_at=int(datetime.combine(day, datetime.min.time(), tzinfo=UTC).timestamp()),
+        )
+
+    matching = [row(start), *(row(end) for _ in range(34))]
+    foreign = row(end, owner=other["device_id"])
+    wrong_market = row(end, market="US")
+    with sessions() as db:
+        db.add_all([*matching, foreign, wrong_market, row(end, phase="postmarket"),
+                    row(start - timedelta(days=1)), row(end + timedelta(days=1))])
+        expected = [item.id for item in sorted(matching, key=lambda item: (item.created_at, item.id), reverse=True)]
+        foreign_id, wrong_market_id = foreign.id, wrong_market.id
+        db.commit()
+
+    route = f"{MOBILE}/facts/task-history"
+    filters = {"start_on": str(start), "end_on": str(end), "market": "CN", "symbol": "SAME", "phase": "intraday"}
+    first = client.get(route, params=filters, headers=auth)
+    assert first.status_code == 200
+    page = first.json()["data"]
+    assert [item["id"] for item in page["items"]] == expected[:30]
+    assert page["next_before"] == expected[29] and all("result" not in item for item in page["items"])
+    with sessions() as db:
+        newest = row(end)
+        newest.created_at += 1
+        db.add(newest)
+        db.commit()
+    rest = client.get(route, params={**filters, "before": page["next_before"]}, headers=auth)
+    assert rest.status_code == 200
+    assert [item["id"] for item in rest.json()["data"]["items"]] == expected[30:]
+    assert rest.json()["data"]["items"][-1]["created_on"] == str(start)
+    assert rest.json()["data"]["next_before"] is None
+
+    legacy = client.get(f"{MOBILE}/facts/tasks", params={"on": str(start), "market": "CN", "symbol": "SAME"}, headers=auth)
+    assert [item["id"] for item in legacy.json()["data"]] == [expected[-1]]
+    assert client.get(route, params=filters).status_code == 401
+    assert client.get(route, params={**filters, "start_on": "2026-11-22"}, headers=auth).status_code == 422
+    assert client.get(route, params={"market": "CN"}, headers=auth).status_code == 422
+    for cursor in (foreign_id, wrong_market_id):
+        invalid = client.get(route, params={**filters, "before": cursor}, headers=auth)
+        assert invalid.status_code == 422
+        assert invalid.json()["error_code"] == "mobile_fact_history_cursor_invalid"
+
+
 def test_fact_snapshots_keep_stale_and_missing_data_explicit(instance, monkeypatch):
     from src.modules.mobile import fact_snapshots
 
@@ -1306,7 +1491,8 @@ def test_fact_snapshots_keep_stale_and_missing_data_explicit(instance, monkeypat
 
 
 def test_screening_is_numeric_and_watchlist_add_is_explicit_and_idempotent(instance, monkeypatch):
-    from src.modules.mobile import screening
+    from marketdata.types import Bar
+    from src.modules.mobile import screening, symbol_facts
 
     client, sessions = instance
     owner, viewer = _renewable_grant(client, sessions)
@@ -1323,11 +1509,19 @@ def test_screening_is_numeric_and_watchlist_add_is_explicit_and_idempotent(insta
         return rows
 
     monkeypatch.setattr(screening, "search_stocks", search)
-    monkeypatch.setattr(screening, "md_quote_rows", lambda *_: [
+    quotes = [
         {"symbol": "EXP", "market": "US", "current_price": 50},
         {"symbol": "SAME", "market": "US", "current_price": 12, "source": "fixture-quote", "quote_date": "2026-11-20"},
         {"symbol": "SAME", "market": "CN", "current_price": 95, "source": "wrong-market"},
-    ])
+    ]
+    monkeypatch.setattr(screening, "md_quote_rows", lambda *_: quotes)
+    monkeypatch.setattr(symbol_facts, "md_quote_rows", lambda *_: quotes)
+
+    def bars(symbol, *, market, days):
+        assert (market, symbol) == ("US", "SAME")
+        return [Bar("2026-11-19", 10, 11, 12, 9, 50), Bar("2026-11-20", 11, 12, 13, 10, 60)], "fixture-bars"
+
+    monkeypatch.setattr(symbol_facts, "get_market_data", lambda: SimpleNamespace(klines_with_vendor=bars))
     view = _bearer(viewer["access_token"])
     write = _bearer(editor["access_token"])
     default = client.get(f"{MOBILE}/screening?q=TEST&market=US", headers=view).json()["data"]
@@ -1341,6 +1535,17 @@ def test_screening_is_numeric_and_watchlist_add_is_explicit_and_idempotent(insta
     assert data["candidates"][0]["target"]["market"] == "US" and "wrong-market" not in screened.text
     assert client.get(f"{MOBILE}/screening?q=TEST&market=US&min_price=30&max_price=20", headers=view).status_code == 400
     assert client.get(f"{MOBILE}/screening?q=TEST&market=US&min_price=-1", headers=view).status_code == 422
+    assert viewer["catalog_symbol_facts"] and not viewer["watchlist_manage"]
+    symbol_path = f"{MOBILE}/symbols"
+    facts = client.get(f"{symbol_path}/US/SAME", headers=view).json()["data"]
+    assert facts["target"] == rows[1] and facts["currency"] == "USD"
+    assert (facts["quote"]["price"], facts["quote"]["source"]) == (12, "fixture-quote")
+    assert (facts["bars_source"], [bar["close"] for bar in facts["bars"]]) == ("fixture-bars", [11, 12])
+    assert client.get(f"{symbol_path}/HK/SAME", headers=view).status_code == 404
+    assert client.get(f"{symbol_path}/US/SAM", headers=view).status_code == 404
+    assert client.get(f"{symbol_path}/watchlist", headers=view).json()["data"] == []
+    with sessions() as db:
+        assert db.query(Stock).count() == db.query(PriceAlertRule).count() == 0
     path = f"{MOBILE}/symbols/watchlist/add"
     body = {"market": "US", "symbol": "SAME"}
     assert client.post(path, headers=view, json=body).status_code == 403
@@ -1353,6 +1558,39 @@ def test_screening_is_numeric_and_watchlist_add_is_explicit_and_idempotent(insta
         assert db.query(Stock).filter_by(symbol="SAME", market="US").count() == 1
     assert client.post("/api/stocks", headers=owner, json={**body, "name": "Duplicate"}).status_code == 400
     assert client.get(f"{MOBILE}/symbols/watchlist", headers=view).json()["data"] == [rows[1]]
+
+
+def test_watchlist_removal_is_market_scoped_and_preserves_dependencies(instance):
+    from src.platform.persistence.models import StockAgent
+
+    client, sessions = instance
+    _, viewer = _renewable_grant(client, sessions)
+    _, editor = _renewable_grant(client, sessions, manage_watchlist=True)
+    read = _bearer(viewer["access_token"])
+    write = _bearer(editor["access_token"])
+    with sessions() as db:
+        protected = Stock(symbol="SAME", name="Protected China", market="CN")
+        duplicate = Stock(symbol="SAME", name="Old China duplicate", market="CN")
+        removable = Stock(symbol="SAME", name="Removable US", market="US")
+        legacy = Stock(symbol="LEGACY", name="Legacy holding", market="CN", quantity=1)
+        db.add_all([protected, duplicate, removable, legacy])
+        db.flush()
+        db.add(StockAgent(stock_id=duplicate.id, agent_name="fixture_agent"))
+        db.commit()
+
+    path = f"{MOBILE}/symbols/watchlist/remove"
+    cn = {"market": "CN", "symbol": "SAME"}
+    us = {"market": "US", "symbol": "SAME"}
+    assert client.post(path, headers=read, json=us).status_code == 403
+    blocked = client.post(path, headers=write, json=cn)
+    assert blocked.status_code == 409 and blocked.json()["error_code"] == "mobile_watchlist_in_use"
+    assert client.post(path, headers=write, json={"market": "CN", "symbol": "LEGACY"}).status_code == 409
+    for _ in range(2):
+        assert client.post(path, headers=write, json=us).json()["data"] is True
+    with sessions() as db:
+        assert db.query(Stock).filter_by(symbol="SAME", market="US").count() == 0
+        assert db.query(Stock).filter_by(symbol="SAME", market="CN").count() == 2
+        assert db.query(StockAgent).filter_by(agent_name="fixture_agent").count() == 1
 
 
 def test_screening_ranks_actual_observations_within_the_selected_watchlist_market(instance, monkeypatch):
