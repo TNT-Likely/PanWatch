@@ -109,6 +109,35 @@ def _quote(target: WatchlistSymbol) -> QuoteSnapshot | None:
     return quote_snapshot(target.market, raw)
 
 
+def load_symbol_facts(db: Session, market: Market, symbol: str, interval: Interval, aggregate_klines) -> SymbolFacts:
+    stock = db.scalar(select(Stock).where(Stock.market == market, Stock.symbol == symbol).order_by(Stock.id).limit(1))
+    target = (
+        WatchlistSymbol.model_validate(stock, from_attributes=True)
+        if stock is not None else catalog_symbols(symbol, market).get(symbol)
+    )
+    if target is None:
+        raise api_error(404, "mobile_symbol_not_found", "此标的不可用。")
+    quote = _quote(target)
+    bars, vendor = get_market_data().klines_with_vendor(
+        target.symbol, market=market, days=_HISTORY_SESSIONS,
+    )
+    # Some vendors use zero for missing volume. Preserve that uncertainty through period sums.
+    daily = sorted(
+        (
+            replace(bar, volume=bar.volume if _finite(bar.volume) and bar.volume > 0 else float("nan"))
+            for bar in bars if all(_finite(value) for value in (bar.open, bar.high, bar.low, bar.close))
+        ),
+        key=lambda bar: bar.date,
+    )
+    points = [Point.model_validate(bar, from_attributes=True) for bar in aggregate_klines(daily, interval)[-60:]]
+    average = fmean(bar.close for bar in daily[-20:]) if len(daily) >= 20 else None
+    return SymbolFacts(
+        target=target, currency=_CURRENCIES[market],
+        quote=quote, interval=interval, bars_source=vendor or None, bars=points, sma20_daily=average,
+        technicals_daily=_daily_technicals(daily),
+    )
+
+
 def create_symbol_facts_router(require_device, aggregate_klines: Callable[[list, str], list]) -> APIRouter:
     router = APIRouter(dependencies=[Depends(require_device)])
 
@@ -117,31 +146,6 @@ def create_symbol_facts_router(require_device, aggregate_klines: Callable[[list,
         market: Market, symbol: Annotated[str, Path(min_length=1, max_length=80)],
         db: DB, interval: Interval = "1d",
     ) -> MobileResponse[SymbolFacts]:
-        stock = db.scalar(select(Stock).where(Stock.market == market, Stock.symbol == symbol).order_by(Stock.id).limit(1))
-        target = (
-            WatchlistSymbol.model_validate(stock, from_attributes=True)
-            if stock is not None else catalog_symbols(symbol, market).get(symbol)
-        )
-        if target is None:
-            raise api_error(404, "mobile_symbol_not_found", "此标的不可用。")
-        quote = _quote(target)
-        bars, vendor = get_market_data().klines_with_vendor(
-            target.symbol, market=market, days=_HISTORY_SESSIONS,
-        )
-        # Some vendors use zero for missing volume. Preserve that uncertainty through period sums.
-        daily = sorted(
-            (
-                replace(bar, volume=bar.volume if _finite(bar.volume) and bar.volume > 0 else float("nan"))
-                for bar in bars if all(_finite(value) for value in (bar.open, bar.high, bar.low, bar.close))
-            ),
-            key=lambda bar: bar.date,
-        )
-        points = [Point.model_validate(bar, from_attributes=True) for bar in aggregate_klines(daily, interval)[-60:]]
-        average = fmean(bar.close for bar in daily[-20:]) if len(daily) >= 20 else None
-        return MobileResponse(data=SymbolFacts(
-            target=target, currency=_CURRENCIES[market],
-            quote=quote, interval=interval, bars_source=vendor or None, bars=points, sma20_daily=average,
-            technicals_daily=_daily_technicals(daily),
-        ))
+        return MobileResponse(data=load_symbol_facts(db, market, symbol, interval, aggregate_klines))
 
     return router

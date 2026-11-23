@@ -22,6 +22,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from src.modules.mobile.alerts import create_alert_router
+from src.modules.mobile.assistant import create_assistant_router, is_enabled as assistant_enabled
 from src.modules.mobile.disclosures import create_disclosures_router
 from src.modules.mobile.fact_snapshots import FactTarget, PortfolioContributions, Symbol, build_postmarket_snapshot
 from src.modules.mobile.fact_tasks import create_fact_tasks_router
@@ -265,6 +266,7 @@ def _device_grant(db: Session, device: MobileDevice, token: str, refresh_token: 
         refresh_token=refresh_token, refresh_expires_at=device.expires_at if refresh_token else None,
         watchlist_read=_WATCHLIST_SCOPE in scopes,
         watchlist_overview=_WATCHLIST_SCOPE in scopes,
+        assistant_chat=_WATCHLIST_SCOPE in scopes and _PORTFOLIO_SCOPE in scopes and assistant_enabled(db),
         alerts_manage=_ALERTS_SCOPE in scopes,
         diagnostics_read=_DIAGNOSTICS_SCOPE in scopes,
         watchlist_manage=_WATCHLIST_ADD_SCOPE in scopes,
@@ -469,7 +471,7 @@ def create_router(
     def capabilities(db: DB) -> MobileResponse[Capabilities]:
         pairing = bool(get_password_hash(db))
         return MobileResponse(data=Capabilities(
-            service_version=get_app_version(), pairing=pairing,
+            service_version=get_app_version(), pairing=pairing, assistant_chat=pairing and assistant_enabled(db),
             password_login=pairing and bool(get_stored_username(db)),
         ))
 
@@ -600,6 +602,14 @@ def create_router(
     router.include_router(create_symbol_facts_router(require_symbol_device, aggregate_klines))
     router.include_router(create_disclosures_router(require_symbol_device))
     router.include_router(create_fact_tasks_router(require_fact_task_device, get_portfolio_summary))
+
+    def require_assistant_device(credentials: Bearer, db: DB) -> MobileDevice:
+        device = require_fact_task_device(credentials, db)
+        if not assistant_enabled(db):
+            raise api_error(503, "mobile_assistant_unavailable", "此实例尚未启用移动事实对话。", headers=_NO_STORE)
+        return device
+
+    router.include_router(create_assistant_router(require_assistant_device, get_portfolio_summary, aggregate_klines))
     router.include_router(create_notifications_router(require_fact_task_device, _ALERTS_SCOPE))
     router.include_router(create_diagnostics_router(require_diagnostics_device, read_agent_health))
     router.include_router(phone)
