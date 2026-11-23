@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from src.modules.mobile.fact_snapshots import (
     FactPhase, FactSnapshot, FactTarget, Symbol, capture_snapshot, symbol_in_watchlist,
 )
+from src.modules.mobile.notifications import publish_fact_completion
 from src.modules.mobile.schemas import MobileResponse
 from src.modules.mobile.symbol_facts import Market
 from src.platform.persistence.database import get_db
@@ -98,12 +99,14 @@ def _capture(bind, task_id: str, lease: str, get_portfolio_summary: Callable[[Se
         logger.warning("Mobile fact snapshot failed (%s)", type(exc).__name__)
 
     with Session(bind) as db:
-        db.execute(update(MobileFactTask).where(
+        finished = db.execute(update(MobileFactTask).where(
             MobileFactTask.id == task_id, MobileFactTask.state == "running", MobileFactTask.lease_token == lease,
         ).values(
             state="complete" if payload is not None else "failed", result=payload,
             finished_at=_now(), lease_token=None, lease_until=None,
         ))
+        if payload is not None and finished.rowcount == 1:
+            publish_fact_completion(db, db.get_one(MobileFactTask, task_id))
         db.commit()
 
 

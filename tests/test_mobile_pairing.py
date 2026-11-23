@@ -453,6 +453,8 @@ def test_mobile_alerts_replay_real_engine_and_keep_web_rules_and_channels(instan
     assert [r.status_code for r in replies] == [201, 201]
     saved = replies[0].json()["data"]
     assert saved == replies[1].json()["data"]
+    with sessions() as db:
+        assert db.get(PriceAlertRule, saved["id"]).repeat_mode == "once"
     assert client.post(f"{MOBILE}/alerts", headers=device, json={**body, "price": 101}).status_code == 409
     assert client.get("/api/price-alerts", headers=device).status_code == 401
 
@@ -468,12 +470,17 @@ def test_mobile_alerts_replay_real_engine_and_keep_web_rules_and_channels(instan
     monkeypatch.setattr(engine, "_fetch_quotes_map", replay)
     fired = asyncio.run(engine.scan_once(only_rule_id=saved["id"]))
     assert fired["triggered"] == 1, fired
+    with sessions() as db:
+        assert db.get(PriceAlertRule, saved["id"]).enabled is False
+    assert asyncio.run(engine.scan_once(only_rule_id=saved["id"]))["triggered"] == 0
     event_id = fired["items"][0]["hit_id"]
     event = client.get(f"{MOBILE}/events/{event_id}", headers=device).json()["data"]
     assert event["id"] == event_id and event["rule_id"] == saved["id"]
     assert event["observed_price"] == 99.70 and event["quote_source"] == "qa_replay"
     assert event["conditions"] == [{"type": "price", "op": "<", "target": 100, "actual": 99.70, "matched": True}]
     assert client.get(f"{MOBILE}/events", headers=device).json()["data"] == [event]
+    inbox = client.get(f"{MOBILE}/notifications", headers=device).json()["data"]
+    assert [n["target"]["event_id"] for n in inbox["items"]] == [event_id]
     with sessions() as db:
         assert db.get(PriceAlertRule, web_rule_id).condition_group == group
         deliveries = db.scalars(select(PriceAlertDelivery).where(PriceAlertDelivery.hit_id == event_id)).all()
@@ -497,6 +504,195 @@ def test_mobile_alerts_replay_real_engine_and_keep_web_rules_and_channels(instan
     assert rotated["alerts_manage"] is True
     assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
     assert client.get(f"{MOBILE}/events/{event_id}", headers=_bearer(rotated["access_token"])).status_code == 401
+
+
+def test_alert_history_pages_same_second_rows_and_rejects_a_cursor_from_another_scope(instance):
+    client, sessions = instance
+    _, grant = _renewable_grant(client, sessions, manage_alerts=True)
+    _, limited = _renewable_grant(client, sessions)
+    reader = _bearer(grant["access_token"])
+    route = f"{MOBILE}/alerts/history"
+    with sessions() as db:
+        china = Stock(symbol="SAME", market="CN", name="CN price")
+        us = Stock(symbol="SAME", market="US", name="US price")
+        rule = PriceAlertRule(stock=china, name="China price reminder")
+        other_rule = PriceAlertRule(stock=us, name="US price reminder")
+        hits = [
+            PriceAlertHit(stock=china, rule=rule, trigger_bucket=f"china-{index}",
+                          trigger_snapshot={"quote": {"current_price": 99.70, "source": "qa-replay"}})
+            for index in range(61)
+        ]
+        other = PriceAlertHit(stock=us, rule=other_rule, trigger_bucket="us")
+        db.add_all([*hits, other])
+        db.flush()
+        ids = [hit.id for hit in hits]
+        other_id = other.id
+        rule_id, stock_id = rule.id, china.id
+        # The legacy scan persists whole-second ISO timestamps directly in SQLite.
+        db.execute(text("UPDATE price_alert_hits SET trigger_time = '2026-11-23 01:23:00'"))
+        db.commit()
+
+    assert client.get(route, headers=_bearer(limited["access_token"])).status_code == 403
+    assert client.get(route, headers=reader, params={"symbol": "SAME"}).status_code == 422
+    scope = {"market": "CN", "symbol": "SAME", "rule_id": rule_id}
+    page = client.get(route, headers=reader, params=scope).json()["data"]
+    assert [hit["id"] for hit in page["items"]] == ids[:-31:-1]
+    assert all(hit["observed_price"] == 99.70 and hit["quote_source"] == "qa-replay" for hit in page["items"])
+    cursor = page["next_before"]
+    assert cursor == ids[-30]
+
+    with sessions() as db:
+        db.add(PriceAlertHit(stock_id=stock_id, rule_id=rule_id, trigger_bucket="new",
+                             trigger_time=datetime(2026, 11, 23, 1, 24)))
+        db.commit()
+    next_page = client.get(route, headers=reader, params={**scope, "before": cursor}).json()["data"]
+    assert [hit["id"] for hit in next_page["items"]] == ids[-31:0:-1]
+    last = client.get(route, headers=reader, params={**scope, "before": next_page["next_before"]}).json()["data"]
+    assert [hit["id"] for hit in last["items"]] == [ids[0]]
+    assert last["next_before"] is None
+
+    wrong_scope = client.get(route, headers=reader, params={**scope, "before": other_id})
+    assert wrong_scope.status_code == 404 and wrong_scope.json()["error_code"] == "mobile_alert_history_cursor_expired"
+    assert len(client.get(f"{MOBILE}/events", headers=reader, params=scope).json()["data"]) == 50
+    with sessions() as db:
+        db.delete(db.get(PriceAlertHit, cursor))
+        db.commit()
+    removed_anchor = client.get(route, headers=reader, params={**scope, "before": cursor})
+    assert removed_anchor.status_code == 404
+    assert removed_anchor.json()["error_code"] == "mobile_alert_history_cursor_expired"
+
+
+def test_mobile_rule_management_keeps_complex_rules_and_reports_scan_health(instance):
+    from src.platform.persistence.models import PriceAlertHealth, PriceAlertScanHealth
+
+    client, sessions = instance
+    _, grant = _renewable_grant(client, sessions, manage_alerts=True)
+    _, preview = _renewable_grant(client, sessions)
+    writer = _bearer(grant["access_token"])
+    reader = _bearer(preview["access_token"])
+    route = f"{MOBILE}/alerts"
+    assert client.get(f"{route}/health", headers=reader).status_code == 403
+    assert client.get(f"{route}/health", headers=writer).json()["data"]["scan"]["status"] == "never_checked"
+    with sessions() as db:
+        stock = Stock(symbol="RULE", name="Rule fixture", market="US")
+        simple = PriceAlertRule(stock=stock, name="Once price", condition_group={
+            "op": "and", "items": [{"type": "price", "op": "<", "value": 100}],
+        }, repeat_mode="once", enabled=True)
+        complex_rule = PriceAlertRule(stock=stock, name="Compound Web rule", condition_group={
+            "op": "or", "items": [{"type": "price", "op": "<", "value": 100}, {"type": "volume", "op": ">", "value": 25}],
+        }, enabled=True)
+        db.add_all([simple, complex_rule])
+        db.flush()
+        simple_id, complex_id = simple.id, complex_rule.id
+        db.add_all([
+            PriceAlertScanHealth(id=1, status="completed", next_scan_at=datetime(2000, 1, 1)),
+            PriceAlertHealth(rule_id=simple_id, status="quote_missing", last_checked_at=datetime(2026, 11, 22)),
+            PriceAlertHit(stock=stock, rule=simple, trigger_snapshot={}, trigger_bucket="simple"),
+            PriceAlertHit(stock=stock, rule=complex_rule, trigger_snapshot={}, trigger_bucket="complex"),
+        ])
+        db.commit()
+
+    listed = {row["id"]: row for row in client.get(route, headers=writer).json()["data"]}
+    assert listed[simple_id]["editable_price"] is True
+    assert listed[complex_id]["editable_price"] is False
+    health = client.get(f"{route}/health", headers=writer).json()["data"]
+    assert health["scan"]["status"] == "monitoring_delayed"
+    assert next(row for row in health["items"] if row["rule_id"] == simple_id)["status"] == "quote_missing"
+
+    patch = {"price": 95, "previous_price": 100, "comparison": "<"}
+    assert client.put(f"{route}/{simple_id}/price", headers=reader, json=patch).status_code == 403
+    assert client.put(f"{route}/{complex_id}/price", headers=writer, json=patch).status_code == 409
+    edited = client.put(f"{route}/{simple_id}/price", headers=writer, json=patch)
+    assert edited.status_code == 200
+    assert edited.json()["data"]["condition_group"]["items"] == [{"type": "price", "op": "<", "value": 95}]
+    assert client.put(f"{route}/{simple_id}/price", headers=writer, json=patch).status_code == 409
+    with sessions() as db:
+        assert db.get(PriceAlertRule, simple_id).repeat_mode == "once"
+        assert db.get(PriceAlertRule, complex_id).condition_group == listed[complex_id]["condition_group"]
+    assert [item["rule_id"] for item in client.get(f"{MOBILE}/events?rule_id={simple_id}", headers=writer).json()["data"]] == [simple_id]
+    assert client.delete(f"{route}/{simple_id}", headers=reader).status_code == 403
+    assert client.delete(f"{route}/{simple_id}", headers=writer).json()["data"] is True
+    assert client.delete(f"{route}/{simple_id}", headers=writer).json()["data"] is True
+    assert client.get(f"{MOBILE}/events?rule_id={simple_id}", headers=writer).json()["data"] == []
+    assert len(client.get(f"{MOBILE}/events?rule_id={complex_id}", headers=writer).json()["data"]) == 1
+
+
+def test_inbox_marks_observed_events_for_one_device_and_preserves_deleted_summary(instance):
+    from src.modules.notifications.service import NotificationService
+    from src.modules.notifications.sources import price_hit
+
+    client, sessions = instance
+    _, first = _renewable_grant(client, sessions, manage_alerts=True)
+    _, second = _renewable_grant(client, sessions, manage_alerts=True)
+    _, limited = _renewable_grant(client, sessions)
+    auth = _bearer(first["access_token"])
+    other = _bearer(second["access_token"])
+    restricted = _bearer(limited["access_token"])
+    url = f"{MOBILE}/notifications"
+    unread = f"{url}/unread"
+    assert client.get(url).status_code == 401
+    assert client.get(unread).status_code == 401
+    assert client.get(url, headers=auth).json()["data"]["items"] == []
+    assert client.get(unread, headers=auth).json()["data"] is False
+    seen_at = datetime(2026, 11, 20, 12, 30)
+    with sessions() as db:
+        stock = Stock(symbol="ALRT", market="US", name="Inbox fixture")
+        rule = PriceAlertRule(stock=stock, name="Saved alert summary")
+        hits = [
+            PriceAlertHit(stock=stock, rule=rule, trigger_time=seen_at + timedelta(minutes=offset),
+                          trigger_bucket=str(offset), trigger_snapshot={})
+            for offset in range(2)
+        ]
+        db.add_all(hits)
+        db.flush()
+        ids = [price_hit(db, hit, rule).id for hit in hits]
+        # These rows use SQLite's historical whole-second timestamp representation.
+        db.execute(text("UPDATE notification_events SET occurred_at = '2026-11-20 12:30:00'"))
+        deleted_target = hits[-1].id
+        rule_id = rule.id
+        NotificationService(db).publish(
+            source="agent", event_type="agent_succeeded", dedupe_key="legacy-agent-body", subject_kind="agent_run",
+            subject_id="12", title="PRIVATE LEGACY REPORT", action={},
+        )
+        db.commit()
+
+    page = client.get(f"{url}?limit=1", headers=auth).json()["data"]
+    newest = page["items"][0]
+    assert page["next_before"] == newest["id"] == page["observed_id"] == ids[1]
+    assert newest["read_at"] is None and newest["target"]["event_id"] == deleted_target
+    follow = f"{url}?limit=1&before={page['next_before']}&through={page['observed_id']}"
+    assert client.get(follow, headers=auth).json()["data"]["items"][0]["id"] == ids[0]
+    assert client.get(url, headers=restricted).json()["data"]["items"] == []
+    assert client.post(f"{url}/read", headers=restricted, json={"ids": ids}).status_code == 200
+    assert client.get(unread, headers=restricted).json()["data"] is False
+    assert client.post(f"{url}/read", headers=auth, json={"ids": [ids[1]]}).status_code == 200
+    assert client.get(unread, headers=auth).json()["data"] is True  # Older page still unread.
+
+    with sessions() as db:
+        rule = db.get(PriceAlertRule, rule_id)
+        new_hit = PriceAlertHit(stock=rule.stock, rule=rule, trigger_time=seen_at + timedelta(minutes=2),
+                               trigger_bucket="2", trigger_snapshot={})
+        db.add(new_hit)
+        db.flush()
+        recent = price_hit(db, new_hit, rule).id
+        db.delete(db.get(PriceAlertHit, deleted_target))
+        db.commit()
+
+    assert client.post(f"{url}/read", headers=auth, json={"through_id": page["observed_id"]}).status_code == 200
+    reply = client.get(url, headers=auth)
+    assert "PRIVATE LEGACY REPORT" not in reply.text
+    inbox = reply.json()["data"]["items"]
+    assert [row["id"] for row in inbox] == [recent, *reversed(ids)]
+    assert [row["read_at"] is not None for row in inbox] == [False, True, True]
+    assert inbox[1]["target"]["title"] == "Saved alert summary"
+    assert client.get(f"{MOBILE}/events/{deleted_target}", headers=auth).status_code == 404
+    assert client.get(unread, headers=auth).json()["data"] is True  # Arrived after the bulk-read snapshot.
+    assert client.post(f"{url}/read", headers=auth, json={"ids": [recent]}).status_code == 200
+    assert client.get(unread, headers=auth).json()["data"] is False
+    assert client.get(unread, headers=other).json()["data"] is True
+    assert all(row["read_at"] is None for row in client.get(url, headers=other).json()["data"]["items"])
+    with sessions() as db:
+        assert NotificationService(db).query(source="market", view="unread").count() == 3
 
 
 def test_push_route_owns_opaque_event_and_retires_with_device(instance, monkeypatch):
@@ -1057,8 +1253,20 @@ def test_fact_task_resumes_same_id_and_preserves_device_bound_history(instance, 
     ).json()["data"]
     assert [row["id"] for row in filtered] == [task_id] and "result" not in filtered[0]
     assert client.get(f"{MOBILE}/facts/tasks", headers=outsider).json()["data"] == []
+    inbox = f"{MOBILE}/notifications"
+    own = client.get(inbox, headers=auth).json()["data"]["items"]
+    assert len(own) == 1 and own[0]["target"] == {"kind": "fact_task", "task_id": task_id, "phase": "premarket"}
+    assert client.get(inbox, headers=outsider).json()["data"]["items"] == []
+    assert client.get(f"{inbox}/unread", headers=auth).json()["data"] is True
+    assert client.get(f"{inbox}/unread", headers=outsider).json()["data"] is False
+    assert client.post(f"{inbox}/read", headers=outsider, json={"ids": [own[0]["id"]]}).status_code == 200
+    assert client.get(inbox, headers=auth).json()["data"]["items"][0]["read_at"] is None
+    assert client.post(f"{inbox}/read", headers=auth, json={"ids": [own[0]["id"]]}).status_code == 200
+    assert client.get(inbox, headers=auth).json()["data"]["items"][0]["read_at"] is not None
+    assert client.get(f"{inbox}/unread", headers=auth).json()["data"] is False
     assert client.delete(f"{MOBILE}/devices/{device['device_id']}", headers=owner).status_code == 200
     assert client.get(route, headers=auth).status_code == 401
+    assert client.get(inbox, headers=auth).status_code == 401
 
 
 def test_fact_snapshots_keep_stale_and_missing_data_explicit(instance, monkeypatch):
