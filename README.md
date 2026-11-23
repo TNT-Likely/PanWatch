@@ -161,11 +161,13 @@ If you do not need browser features such as screenshots, set `PLAYWRIGHT_SKIP_BR
 
 ## Upgrade PanWatch for the mobile app
 
-The native app connects to your PanWatch server over HTTPS. For the briefing, holdings metrics, price alerts and opportunity screening in the mobile beta, upgrade to [PanWatch 0.23.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.23.0) or later. Basic mobile connections are supported from [0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0).
+The native app connects to your PanWatch server over HTTPS. Upgrade to [PanWatch 0.24.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.24.0) for the mobile notification inbox, account-level portfolio details and conversations grounded in your server’s data. [0.23.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.23.0) supports briefings, holdings metrics, price alerts and screening. Basic mobile connections are supported from [0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0).
 
 1. Back up your existing data mount and keep it mounted at `/app/data`.
-2. For Docker Compose, set the existing service image to `sunxiao0721/panwatch:0.23.0`, then run `docker compose pull panwatch` and `docker compose up -d panwatch`. For `docker run`, pull that image and recreate the container with your existing environment, ports, and data mount.
+2. For Docker Compose, set the existing service image to `sunxiao0721/panwatch:0.24.0`, then run `docker compose pull panwatch` and `docker compose up -d panwatch`. For `docker run`, pull that image and recreate the container with your existing environment, ports, and data mount.
 3. Sign in on the web and confirm your holdings are present. In the app, recheck the same HTTPS address and sign in with your existing server credentials, or open **Settings → Connect a phone** on the web to create and approve a new QR connection. Reconnect and grant the requested permissions to use newly available features.
+
+To enable mobile conversations, set `MOBILE_ASSISTANT_MODEL_ID` to the numeric ID of a configured model on your server and restart PanWatch.
 
 ### Android closed testing
 
