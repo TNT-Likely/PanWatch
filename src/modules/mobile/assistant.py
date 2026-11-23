@@ -5,6 +5,7 @@ import logging
 import re
 import time
 from collections.abc import Callable
+from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -14,11 +15,12 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
-from src.modules.mobile.assistant_facts import Context, Source, gather_sources
+from src.modules.mobile.assistant_facts import Context, Evidence, Source, gather_sources, requests_lookback
+from src.modules.mobile.assistant_reminders import ApprovalDecision, ApprovalView, approval_view, decide, stage_if_requested
 from src.modules.mobile.schemas import MobileResponse
 from src.platform.ai.ai_client import AIClient
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import AIModel, MobileAssistantConversation as Conversation
+from src.platform.persistence.models import AIModel, MobileAssistantApproval as Approval, MobileAssistantConversation as Conversation
 from src.platform.persistence.models import MobileAssistantTurn as Turn
 from src.platform.persistence.models import MobileDevice
 from src.platform.runtime.config import Settings
@@ -45,6 +47,7 @@ class TurnView(BaseModel):
     state: Literal["running", "complete", "failed", "cancelled"]
     sources: list[Source]
     created_at: int
+    approval: ApprovalView | None = None
 
 
 class Summary(BaseModel):
@@ -101,11 +104,13 @@ def _sequence(db: Session, cid: str) -> list[Turn]:
 
 def _view(db: Session, conversation: Conversation) -> Detail:
     now = _now()
+    approvals = {row.turn_id: approval_view(row, now) for row in db.scalars(
+        select(Approval).join(Turn, Turn.id == Approval.turn_id).where(Turn.conversation_id == conversation.id))}
     return Detail(**Summary.model_validate(conversation, from_attributes=True).model_dump(),
                   context=conversation.context, turns=[
                       TurnView(id=row.id, text=row.text, answer=row.answer, sources=row.sources,
                                state="failed" if row.state == "running" and row.deadline <= now else row.state,
-                               created_at=row.created_at)
+                               created_at=row.created_at, approval=approvals.get(row.id))
                       for row in _sequence(db, conversation.id)
                   ])
 
@@ -139,7 +144,7 @@ def _inputs(bind, rid, attempt, portfolio, aggregate_klines):
         model = _model(db)
         if model is None or model.service is None:
             raise RuntimeError("Mobile chat model unavailable")
-        sources = gather_sources(db, conv.device_id, conv.context, row.locale, portfolio, aggregate_klines)
+        sources = gather_sources(db, conv.device_id, conv.context, row.locale, portfolio, aggregate_klines, row.text)
         history = list(db.scalars(select(Turn).where(Turn.conversation_id == conv.id, Turn.ordinal < row.ordinal,
                                                       Turn.state == "complete").order_by(Turn.ordinal.desc()).limit(3)))
         client = AIClient(model.service.base_url, model.service.api_key or "local", model.model)
@@ -163,36 +168,67 @@ def _unanswered(zh: bool) -> str:
             if zh else "The selected sources do not establish an answer. Choose a portfolio, symbol or saved brief, or ask how an indicator is calculated.")
 
 
-def _relevant(question: str, sources: list[Source]) -> list[Source]:
-    # "What does RSI mean?" and "What is its reading?" have different sources.
-    # Select the evidence type, then leave the identity and meaning match to the model.
-    query = question.casefold()
-    definitions = sources[-4:]
-    observations = sources[:-4]
-    meaning = re.search(r"含义|什么是|怎么(?:计算|算)|计算方法|(?:取值|读数)?范围|如何(?:计算|理解)|怎么理解|是[啥什].*意思|definition|how (?:is|do|does).*calculat|what does .* mean|what is the range", query)
-    indicators = [name for name, names in (("rsi", ("rsi", "相对强弱")), ("macd", ("macd", "dif", "dea")),
-                                            ("volume", ("量比", "volume ratio"))) if any(term in query for term in names)]
-    if indicators:
-        candidates = definitions if meaning or not observations else observations
-        return [s for s in candidates if any(key in s.title.casefold().replace("量比", "volume") for key in indicators)]
-    if meaning or not observations:
-        return definitions
-    if re.search(r"股数|多少[股份]|数量|持有几|how many|quantity|units|shares", query):
-        candidates = [s for s in observations if s.title.endswith((" · 持仓", " · Position"))]
-    elif re.search(r"报价|股价|现价|price|quote", query):
-        candidates = [s for s in observations if "最新可见报价" in s.detail or "Latest observed price" in s.detail]
-    elif re.search(r"当前|目前|最新|读数|市值|盈亏|多少|latest|current|right now|assets|p&l", query):
-        candidates = observations
-    else:
-        candidates = sources
-    codes = re.findall(r"(?<![\w.])\d{5,6}(?![\d.])", question, re.ASCII)
-    if codes:
-        return [s for s in candidates if any(code in s.title for code in codes)]
-    named = [s for s in candidates if any(
-        len(name) >= 2 and name.casefold() in query
-        for name in [re.split(r"[（(·]", s.title, maxsplit=1)[0].strip()])]
-    return named or candidates
+_METRICS = {
+    "rsi": r"rsi|相对强弱",
+    "macd": r"macd|\bdif\b|\bdea\b",
+    "volume": r"量比|volume ratio",
+    "return": r"持仓浮盈|固定持仓|收益口径|unrealized (?:profit|gain)|return basis|fixed.holdings",
+}
+_DEFINITION = re.compile(
+    r"含义|什么是|怎么(?:计算|算)|口径|计算方法|(?:取值|读数)?范围|如何(?:计算|理解)|怎么理解|是[啥什].*意思|"
+    r"(?:的|是)意思|definition|how (?:is|do|does).*calculat|what does .* mean|what is (?:the |its )?range")
+_DATE = re.compile(r"(?<!\d)((?:19|20)\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})日?(?!\d)")
+_OTHER_PERIOD = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)|去年|上周|上月|昨天|明天|最近.{0,4}(?:周|个月)|yesterday|tomorrow|last (?:year|week|month)")
 
+
+def _relevant(question: str, sources: list[Evidence], previous_question: str = "") -> list[Evidence]:
+    query = question.casefold()
+    if re.fullmatch(r"(?:那|那么)?(?:它|这个指标)(?:呢|的(?:读数|范围|定义)(?:呢|是什么)?)[？?！!.。]*|(?:and )?its (?:reading|range|definition)[?!.]*", query.strip()):
+        metric = next((term for term, pattern in _METRICS.items() if re.search(pattern, previous_question.casefold())), None)
+        if metric:
+            query = f"{metric} {query}"
+    matches = _DATE.findall(query)
+    try:
+        days = {date(int(y), int(m), int(d)) for y, m, d in matches}
+    except ValueError:
+        return []
+    if len(days) > 1 or _OTHER_PERIOD.search(_DATE.sub("", query)):
+        return []
+    metrics = {key for key, pattern in _METRICS.items() if re.search(pattern, query)}
+    if requests_lookback(query) and not _DEFINITION.search(query):
+        candidates = [s for s in sources if s.kind == "lookback"]
+    elif re.search(r"哪些数据缺失|什么数据缺失|数据是否齐全|what information is missing|what data is missing|data coverage", query):
+        candidates = [s for s in sources if s.kind == "coverage"]
+    elif re.search(r"依据是什么|来自哪里|数据来源|what evidence supports this|where (?:does|do).*come from|source of (?:this|these)", query):
+        candidates = [s for s in sources if s.kind == "basis"]
+    elif metrics:
+        kind = "definition" if _DEFINITION.search(query) or re.fullmatch(r"(?:what is )?(?:rsi6?|macd|量比)[?？.。 ]*", query) else "indicator"
+        candidates = [s for s in sources if s.metric in metrics and s.kind == kind]
+    else:
+        intents = (
+            (r"收盘价|收市价|closing price|clos(?:e|ed) (?:on|at)", {"close"}),
+            (r"多少[股份]|股数|数量|持有几|多少仓位|how many|quantity|units|shares", {"position"}),
+            (r"报价|股价|现价|价格|行情|现(?:在|在值)多少钱|price|quote", {"quote"}),
+            (r"贡献|contribut", {"contribution"}),
+            (r"盈亏|赚了|亏了|p&l|profit|loss", {"pnl", "contribution"}),
+            (r"总资产|估值|总市值|total (?:assets|value)|portfolio value", {"overview"}),
+            (r"持仓|市值|holding|position|market value", {"position"}),
+            (r"公告|披露|disclosure|filing", {"disclosure"}),
+            (r"这份简报|这份报告|(?:this|the saved) (?:brief|report)", {"brief_status", "disclosure", "quote", "contribution"}),
+        )
+        kinds = next((kinds for pattern, kinds in intents if re.search(pattern, query)), set())
+        candidates = [s for s in sources if s.kind in kinds]
+    if days:
+        candidates = [s for s in candidates if s.observed_on in days]
+    elif candidates and candidates[0].kind in {"close", "lookback"}:
+        candidates = [max(candidates, key=lambda s: s.observed_on or date.min)]
+    codes = re.findall(r"(?<![\w.])\d{5,6}(?![\d.])", query, re.ASCII)
+    codes.extend(code for _, code in re.findall(r"\b(cn|hk|us)\s*[:： ]\s*([a-z0-9.-]+)", query, re.ASCII))
+    if codes:
+        return [s for s in candidates if all(re.search(r"(?<![\w.])" + re.escape(code) + r"(?![\w.])", s.title.casefold(), re.ASCII) for code in codes)]
+    named = [s for s in candidates if (name := re.split(r"[（(·]", s.title, maxsplit=1)[0].strip().casefold())
+             and len(name) >= 2 and name in query]
+    return (named or candidates)[:96]
 
 async def _generate(bind, rid, attempt, portfolio, aggregate_klines) -> None:
     client = None
@@ -206,8 +242,9 @@ async def _generate(bind, rid, attempt, portfolio, aggregate_klines) -> None:
             client, question, locale, previous, sources = inputs
             zh = locale == "zh-CN"
             selected: list[Source] = []
-            if not _ADVICE.search(question):
-                sources = _relevant(question, sources)
+            advice = _ADVICE.search(question)
+            sources = [] if advice else _relevant(question, sources, previous[-1]["question"] if previous else "")
+            if sources:
                 reference = "\n".join(f"F{i:02}: {source.detail}" for i, source in enumerate(sources, 1))
                 messages = [{"role": "system", "content": _INSTRUCTIONS}]
                 for turn in previous:
@@ -248,9 +285,11 @@ async def _generate(bind, rid, attempt, portfolio, aggregate_klines) -> None:
                     if len(selected) == 3:
                         break
                 answer = "\n\n".join(s.detail for s in selected) or _unanswered(zh)
-            else:
+            elif advice:
                 answer = ("我可以和你核对持仓、报价和历史指标。买卖、仓位和目标价需要由你自己决定。" if zh else
                           "I can check holdings, quotes and historical indicators. Trading decisions, position sizes and price targets are yours.")
+            else:
+                answer = _unanswered(zh)
             await asyncio.to_thread(_attempt_state, bind, rid, attempt, writing={
                 "state": "complete", "answer": answer, "sources": [s.model_dump() for s in selected],
                 "attempt": None, "deadline": None})
@@ -310,9 +349,12 @@ def create_assistant_router(require_device, portfolio: Callable, aggregate_kline
                     state="running", created_at=now, attempt=uuid4().hex, deadline=now+_RUNNING_SECONDS)
         conv.updated_at = now
         db.add(turn)
+        db.flush()
+        handled = stage_if_requested(db, device, conv, turn, now)
         db.commit()
         response = MobileResponse(data=_view(db, conv))
-        dispatch(tasks, db, turn)
+        if not handled:
+            dispatch(tasks, db, turn)
         return response
 
     def change(cid, rid, device, db, tasks, retry):
@@ -341,5 +383,11 @@ def create_assistant_router(require_device, portfolio: Callable, aggregate_kline
     @router.post("/conversations/{cid}/turns/{rid}/cancel")
     def cancel(cid: UUID, rid: UUID, device: Device, db: DB, tasks: BackgroundTasks) -> MobileResponse[Detail]:
         return change(cid, rid, device, db, tasks, False)
+
+    @router.post("/conversations/{cid}/turns/{rid}/approvals/{aid}")
+    def decision(cid: UUID, rid: UUID, aid: UUID, body: ApprovalDecision, device: Device, db: DB) -> MobileResponse[Detail]:
+        conversation = _owned(db, device.id, cid)
+        decide(db, device, conversation, rid, aid, body, _now())
+        return MobileResponse(data=_view(db, conversation))
 
     return router
