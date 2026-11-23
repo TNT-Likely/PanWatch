@@ -1718,3 +1718,98 @@ def test_mobile_chat_stays_device_owned_and_renders_only_selected_facts(instance
     assert client.post(turn + "/cancel", headers=other).status_code == 404
     assert client.get(uri, headers=header).json()["data"]["items"][0]["id"] == result["id"]
     assert client.get("/api/assistant/conversations", headers=header).status_code in (401, 403)
+
+
+def test_chat_only_selects_evidence_for_the_asked_subject_and_date():
+    from datetime import date
+
+    from src.modules.mobile.assistant import _relevant
+    from src.modules.mobile.assistant_facts import Evidence
+
+    day = date(2026, 11, 23)
+    quote = Evidence(kind="quote", title="云帆 · CN 600901", detail="38.62", observed_on=day)
+    latest_close = Evidence(kind="close", title=quote.title, detail="39.52", observed_on=day)
+    older_close = Evidence(kind="close", title=quote.title, detail="34.17", observed_on=date(2026, 10, 19))
+    definition = Evidence(kind="definition", title="RSI · 6", detail="0 至 100", metric="rsi")
+    data = [quote, latest_close, older_close, definition]
+    assert _relevant("苏州的天气怎么样？", data) == []
+    assert _relevant("1998-05-01 的收盘价是多少？", data) == []
+    assert _relevant("2026年10月19日的收盘价是多少？", data) == [older_close]
+    assert _relevant("这份简报里云帆的报价是多少？", data) == [quote]
+    assert _relevant("这只标的最新价格是多少？", data) == [quote]
+    assert _relevant("1998-05-01 的价格是多少？", data) == []
+    assert _relevant("CN 900001 的报价是多少？", data) == []
+    basis = Evidence(kind="basis", title="Valuation sources", detail="Test basis")
+    coverage = Evidence(kind="coverage", title="Valuation coverage", detail="Test coverage")
+    lookback = Evidence(kind="lookback", title="Fixed-holdings lookback", detail="Synthetic closing value",
+                        observed_on=day, sensitive_amounts=True)
+    for prompt in ("这份资料的主要依据是什么？", "What evidence supports this?"):
+        assert _relevant(prompt, data + [basis, coverage]) == [basis]
+    for prompt in ("还有哪些数据缺失？", "What information is missing?"):
+        assert _relevant(prompt, data + [basis, coverage]) == [coverage]
+    assert _relevant("2026-11-23 按当前持仓回看", data + [lookback]) == [lookback]
+    assert _relevant("1998-05-01 按当前持仓回看", data + [lookback]) == []
+    assert _relevant("1998-05-01 实际账户收益是多少？", data + [lookback]) == []
+    assert _relevant("What does RSI mean?", data) == [definition]
+    assert _relevant("当前 RSI6 读数是多少？", data) == []
+    assert _relevant("它的范围呢？", data, "RSI6 怎么解释？") == [definition]
+
+
+def test_mobile_chat_requires_one_bound_explicit_decision_for_each_price_alert(instance, monkeypatch):
+    from src.modules.mobile import assistant
+    from src.platform.persistence.models import AIModel, AIService, MobileAssistantApproval
+
+    client, sessions = instance
+    with sessions() as db:
+        service = AIService(name="Unit model", base_url="http://127.0.0.1:1/v1")
+        db.add(service)
+        db.flush()
+        model = AIModel(service_id=service.id, name="Unit", model="local")
+        db.add_all([model, Stock(market="CN", symbol="600901", name="云帆科技")])
+        db.commit()
+        monkeypatch.setenv("MOBILE_ASSISTANT_MODEL_ID", str(model.id))
+    _, grant = _renewable_grant(client, sessions, manage_alerts=True)
+    _, outsider = _renewable_grant(client, sessions, manage_alerts=True)
+    _, reader = _renewable_grant(client, sessions)
+    def new_request(header, question, *, context=None):
+        thread = f"{MOBILE}/assistant/conversations/{uuid4()}"
+        turn = thread + f"/turns/{uuid4()}"
+        body = {"text": question, "context": context, "locale": "zh-CN"}
+        result = client.put(turn, headers=header, json=body)
+        assert result.status_code == 200, result.text
+        reply = result.json()["data"]["turns"][0]
+        assert reply["state"] == "complete"
+        return turn, reply["approval"], body
+
+    headers = _bearer(grant["access_token"])
+    q = "当 CN 600901 价格低于 35 时提醒我"
+    turn, approval, body = new_request(headers, q)
+    assert approval["state"] == "pending" and approval["rule_id"] is None
+    assert (approval["symbol"], approval["comparison"], approval["price"], approval["currency"]) == ("600901", "<", 35, "CNY")
+    with sessions() as db:
+        assert db.query(PriceAlertRule).count() == 0
+    assert client.put(turn, headers=headers, json=body).json()["data"]["turns"][0]["approval"] == approval
+    decision = turn + "/approvals/" + approval["id"]
+    assert client.post(decision, headers=_bearer(outsider["access_token"]), json={"decision": "approve"}).status_code == 404
+    assert client.post(decision, headers=headers, json={"decision": "approve", "price": 7}).status_code == 422
+    for _ in range(2):
+        result = client.post(decision, headers=headers, json={"decision": "approve"})
+        assert result.status_code == 200, result.text
+        stored = result.json()["data"]["turns"][0]["approval"]
+        assert stored["state"] == "approved" and stored["rule_id"]
+    assert client.post(decision, headers=headers, json={"decision": "reject"}).status_code == 409
+    rejected_turn, rejected, _ = new_request(headers, "价格高于 40 时通知我", context={"kind":"symbol","market":"CN","symbol":"600901"})
+    res = client.post(rejected_turn + "/approvals/" + rejected["id"], headers=headers, json={"decision":"reject"})
+    assert res.json()["data"]["turns"][0]["approval"]["state"] == "rejected"
+    expired_turn, pending, _ = new_request(headers, q)
+    with sessions() as db:
+        db.get(MobileAssistantApproval, pending["id"]).expires_at = assistant._now() - 1
+        db.commit()
+    expired = client.post(expired_turn + "/approvals/" + pending["id"], headers=headers, json={"decision":"approve"})
+    assert expired.json()["data"]["turns"][0]["approval"]["state"] == "expired"
+    assert new_request(headers, "当 CN 600901 价格低于 35 或高于 39 时提醒我")[1] is None
+    assert new_request(_bearer(reader["access_token"]), q)[1] is None
+    with sessions() as db:
+        rule = db.query(PriceAlertRule).one()
+        assert rule.id == stored["rule_id"] and rule.repeat_mode == "once"
+        assert rule.condition_group == {"op":"and", "items":[{"type":"price", "op":"<", "value":35}]}

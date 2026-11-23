@@ -1526,6 +1526,22 @@ class MobileAssistantTurn(Base):
     deadline = Column(Integer, nullable=True)
 
 
+class MobileAssistantApproval(Base):
+    __tablename__ = "mobile_assistant_approvals"
+
+    id = Column(String, primary_key=True)
+    turn_id = Column(String, ForeignKey("mobile_assistant_turns.id", ondelete="CASCADE"), nullable=False, unique=True)
+    stock_id = Column(Integer, nullable=False)
+    market = Column(String, nullable=False)
+    symbol = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    comparison = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+    state = Column(String, nullable=False)
+    expires_at = Column(Integer, nullable=False)
+    rule_id = Column(Integer, nullable=True)
+
+
 class MobilePushRoute(Base):
     __tablename__ = "mobile_push_routes"
     __table_args__ = (
