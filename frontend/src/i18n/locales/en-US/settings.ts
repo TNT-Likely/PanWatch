@@ -12,6 +12,7 @@ export const settings = {
   },
   language: {
     title: 'Interface language',
+    menuLabel: 'Language',
     simplifiedChinese: '简体中文',
     english: 'English',
     switchAria: 'Switch interface language',
