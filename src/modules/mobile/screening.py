@@ -1,17 +1,19 @@
 """Objective candidate search and explicit updates to the paired watchlist."""
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from math import isfinite
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field, FiniteFloat, StringConstraints
+from pydantic import AwareDatetime, BaseModel, Field, FiniteFloat, StringConstraints
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from src.modules.market.watchlist import add_stock
 from src.modules.mobile.schemas import MobileResponse, WatchlistSymbol
+from src.platform.marketdata.instruments import AssetType
 from src.platform.marketdata.marketdata_client import md_quote_rows
+from src.platform.marketdata.quote_display import quote_observed_at
 from src.platform.marketdata.stock_list import search_stocks
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Position, PriceAlertHit, PriceAlertRule, Stock, StockAgent
@@ -22,18 +24,22 @@ Market = Literal["CN", "HK", "US"]
 SearchTerm = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=48)]
 ScreeningQuery = Annotated[str, StringConstraints(strip_whitespace=True, max_length=48)]
 Price = Annotated[FiniteFloat, Field(ge=0)]
-SortField = Literal["symbol", "change_pct", "turnover", "volume_ratio"]
+SortField = Literal["symbol", "change_pct", "turnover", "volume_ratio", "observed_at"]
 SortDirection = Literal["asc", "desc"]
+RecordRange = Literal["24h", "7d"]
 _CURRENCIES = {"CN": "CNY", "HK": "HKD", "US": "USD"}
+_RECORD_RANGES = {"24h": timedelta(hours=24), "7d": timedelta(days=7)}
 
 
 class Candidate(BaseModel):
     target: WatchlistSymbol
+    asset_type: AssetType | None
     price: FiniteFloat | None
     change_pct: FiniteFloat | None
     turnover: FiniteFloat | None
     volume_ratio: FiniteFloat | None
     quote_date: date | None
+    observed_at: AwareDatetime | None
     source: str | None
     saved: bool
 
@@ -44,6 +50,8 @@ class Screening(BaseModel):
     missing_quotes: int
     sort: SortField
     direction: SortDirection
+    asset_type: Literal["etf"] | None = None
+    observed_within: RecordRange | None = None
 
 
 class WatchlistTarget(BaseModel):
@@ -61,11 +69,13 @@ def catalog_symbols(query: str, market: Market) -> dict[str, WatchlistSymbol]:
     return candidates
 
 
-def _watchlist_symbols(db: Session, market: Market) -> dict[str, WatchlistSymbol]:
-    rows = db.execute(select(Stock.symbol, Stock.name).where(Stock.market == market).order_by(Stock.id))
+def _watchlist_records(db: Session, market: Market, symbols: list[str] | None = None) -> dict[str, Stock]:
+    query = select(Stock).where(Stock.market == market).order_by(Stock.sort_order, Stock.id)
+    if symbols is not None:
+        query = query.where(Stock.symbol.in_(symbols))
     candidates = {}
-    for symbol, name in rows:
-        candidates.setdefault(symbol, WatchlistSymbol(symbol=symbol, name=name, market=market))
+    for row in db.scalars(query):
+        candidates.setdefault(row.symbol, row)
     return candidates
 
 
@@ -85,6 +95,8 @@ def _sort_candidates(candidates: list[Candidate], field: SortField, direction: S
         # Keep missing observations last in both directions and break ties by symbol.
         if value is None:
             return True, 0, item.target.symbol
+        if isinstance(value, datetime):
+            value = value.timestamp()
         return False, -value if direction == "desc" else value, item.target.symbol
 
     candidates.sort(key=sort_key)
@@ -98,41 +110,49 @@ def create_screening_router(require_reader, require_writer) -> APIRouter:
         db: DB, market: Market, q: ScreeningQuery = "",
         min_price: Annotated[Price | None, Query()] = None, max_price: Annotated[Price | None, Query()] = None,
         sort: SortField = "symbol", direction: SortDirection = "asc",
+        asset_type: Literal["etf"] | None = None, observed_within: RecordRange | None = None,
     ) -> MobileResponse[Screening]:
         if min_price is not None and max_price is not None and min_price > max_price:
             raise api_error(400, "mobile_price_range_invalid", "价格区间无效。")
-        universe = catalog_symbols(q, market) if q else _watchlist_symbols(db, market)
-        currency = _CURRENCIES[market]
-        if not universe:
-            return MobileResponse(data=Screening(
-                candidates=[], currency=currency, missing_quotes=0, sort=sort, direction=direction,
-            ))
-        symbols = list(universe)
-        quotes = {row["symbol"]: row for row in md_quote_rows(symbols, market) if row["market"] == market}
-        saved = set(symbols)
         if q:
-            saved = set(db.scalars(select(Stock.symbol).where(Stock.market == market, Stock.symbol.in_(symbols))))
+            universe = catalog_symbols(q, market)
+            saved = _watchlist_records(db, market, list(universe)) if universe else {}
+        else:
+            saved = _watchlist_records(db, market)
+            universe = {symbol: WatchlistSymbol.model_validate(stock, from_attributes=True) for symbol, stock in saved.items()}
+        types = {symbol: stock.asset_type for symbol, stock in saved.items() if stock.asset_type in ("stock", "etf")}
+        if asset_type is not None:
+            universe = {symbol: target for symbol, target in universe.items() if types.get(symbol) == asset_type}
+        currency = _CURRENCIES[market]
+        rows = md_quote_rows(list(universe), market) if universe else []
+        quotes = {row["symbol"]: row for row in rows if row["market"] == market}
+        now = datetime.now(UTC)
+        cutoff = now - _RECORD_RANGES[observed_within] if observed_within else None
         items = []
         missing = 0
         for symbol, target in universe.items():
             quote = quotes.get(symbol, {})
             price = _observation(quote.get("current_price"))
+            record_time = quote_observed_at(quote) if price is not None else None
             if price is None:
                 missing += 1
+            if cutoff is not None and (record_time is None or not cutoff <= record_time <= now):
+                continue
             if min_price is not None and (price is None or price < min_price):
                 continue
             if max_price is not None and (price is None or price > max_price):
                 continue
             items.append(Candidate(
-                target=target, price=price,
+                target=target, asset_type=types.get(symbol), price=price,
                 change_pct=_observation(quote.get("change_pct")),
                 turnover=_observation(quote.get("turnover"), nonnegative=True),
                 volume_ratio=_observation(quote.get("volume_ratio"), nonnegative=True),
-                quote_date=quote.get("quote_date"), source=quote.get("source") or None, saved=symbol in saved,
+                quote_date=quote.get("quote_date"), observed_at=record_time, source=quote.get("source") or None, saved=symbol in saved,
             ))
         _sort_candidates(items, sort, direction)
         return MobileResponse(data=Screening(
             candidates=items, currency=currency, missing_quotes=missing, sort=sort, direction=direction,
+            asset_type=asset_type, observed_within=observed_within,
         ))
 
     @router.post("/symbols/watchlist/add", dependencies=[Depends(require_writer)])

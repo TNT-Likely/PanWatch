@@ -26,10 +26,7 @@ from pan_agent import (
 from pan_agent_tool_research import ToolResearchPlugin, ToolResearchService, ToolSelectionPolicy
 from pan_agent_token_meter import HeuristicTokenMeter
 
-from src.platform.ai.ai_failover import (
-    build_failover_client,
-    get_configured_failover_client,
-)
+from src.platform.ai.ai_failover import get_configured_failover_client
 from src.platform.persistence.models import (
     AIModel,
     AIService,
@@ -629,21 +626,7 @@ class AssistantService:
         return self.get_tool_permissions()
 
     def build_failover_client(self):
-        model = (
-            self._repository.session.query(AIModel)
-            .filter(AIModel.is_default == True)
-            .first()
-        )
-        if not model:
-            model = self._repository.session.query(AIModel).first()
-        provider = (
-            self._repository.session.query(AIService)
-            .filter(AIService.id == model.service_id)
-            .first()
-            if model
-            else None
-        )
-        return build_failover_client(model, provider, db=self._repository.session)
+        return get_configured_failover_client(self._repository.session)
 
     def build_context_compression_client(self):
         """Resolve the optional summary model through the shared failover path."""

@@ -517,6 +517,7 @@ def create_router(
                 quantity=position["quantity"],
                 market_value=position["market_value"],
                 currency={"CN": "CNY", "HK": "HKD", "US": "USD"}[market],
+                market_value_cny=position["market_value_cny"],
                 position_id=position["id"],
                 account_id=account["id"],
                 account_name=account["name"],
@@ -617,7 +618,9 @@ def create_router(
 
     router.include_router(create_assistant_router(require_assistant_device, get_portfolio_summary, aggregate_klines))
     router.include_router(create_notifications_router(require_fact_task_device, _ALERTS_SCOPE))
-    router.include_router(create_diagnostics_router(require_diagnostics_device, read_agent_health))
+    router.include_router(create_diagnostics_router(
+        require_diagnostics_device, read_agent_health, fact_task_scopes=frozenset((_WATCHLIST_SCOPE, _PORTFOLIO_SCOPE)),
+    ))
     router.include_router(phone)
     router.include_router(create_alert_router(require_alert_device))
     router.include_router(create_push_router(require_alert_device))
