@@ -8,6 +8,8 @@
   管理 A 股、港股和美股持仓，监控行情与提醒，并通过 <a href="https://github.com/TauricResearch/TradingAgents">TradingAgents</a> 进行深度分析。自托管部署，可接入你选择的 OpenAI 兼容服务商或 Ollama 本地模型。
 </p>
 
+> **PanWatch App 测试招募** · [iOS 加入 TestFlight](https://testflight.apple.com/join/9Dn9fx7A) · [Android 封闭测试报名](https://github.com/TNT-Likely/PanWatch/issues/307)
+
 <p align="center">
   <a href="#-功能一览">功能一览</a> · <a href="#核心功能">核心功能</a> · <a href="#快速开始">快速开始</a> · <a href="#详细说明">详细说明</a> · <a href="#支持项目">支持项目</a> · <a href="#贡献">参与贡献</a>
 </p>
@@ -157,17 +159,18 @@ docker compose up -d
 
 ## 为移动版升级 PanWatch
 
-原生 App 通过 HTTPS 连接你的 PanWatch 服务。升级到 [PanWatch 0.24.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.24.0) 可使用移动通知收件箱、分账户持仓明细，以及基于服务端数据的对话。[0.23.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.23.0) 支持研判、持仓指标、价格盯盘和机会筛选。[0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0) 起支持基础移动连接。
+原生 App 通过 HTTPS 连接你的 PanWatch 服务。建议升级到 [PanWatch 0.24.1](https://github.com/TNT-Likely/PanWatch/releases/tag/0.24.1)，以使用移动通知收件箱、分账户持仓明细，以及基于服务端数据的对话。[0.23.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.23.0) 支持研判、持仓指标、价格盯盘和机会筛选。[0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0) 起支持基础移动连接。
 
 1. 备份现有数据卷或挂载目录，并继续把它挂载到 `/app/data`。
-2. 使用 Docker Compose 时，将现有服务的镜像改为 `sunxiao0721/panwatch:0.24.0`，再执行 `docker compose pull panwatch` 和 `docker compose up -d panwatch`。使用 `docker run` 时，拉取该镜像，用原有环境变量、端口及数据挂载重建容器。
+2. 使用 Docker Compose 时，将现有服务的镜像改为 `sunxiao0721/panwatch:0.24.1`，再执行 `docker compose pull panwatch` 和 `docker compose up -d panwatch`。使用 `docker run` 时，拉取该镜像，用原有环境变量、端口及数据挂载重建容器。
 3. 登录 Web 核对持仓。在 App 重新检测原有 HTTPS 地址并用原账号登录，或在 Web 打开 **设置 → 连接手机**，生成新的二维码并批准这台手机。重新连接并批准所需权限，即可使用新开放的功能。
 
 要开启移动对话，请将服务端环境变量 `MOBILE_ASSISTANT_MODEL_ID` 设为已配置模型的数字 ID，然后重启 PanWatch。
 
-### Android 封闭测试
+### 参加移动版测试
 
-测试覆盖 Google Play 为该轨道提供的全部地区。使用测试名单中的 Google 账号登录，[加入 Android 封闭测试](https://play.google.com/apps/testing/com.tntlikely.panwatch)，然后从 Google Play 安装 PanWatch。
+- **iOS** · [打开 TestFlight 邀请](https://testflight.apple.com/join/9Dn9fx7A)并安装 PanWatch。
+- **Android** · [在报名 Issue 申请加入](https://github.com/TNT-Likely/PanWatch/issues/307)。Google 账号将在 24 小时内加入名单。用同一账号[加入 Google Play 封闭测试](https://play.google.com/apps/testing/com.tntlikely.panwatch)后安装 PanWatch。
 
 升级服务后，在 Web 打开 **设置 → 连接手机**。用 PanWatch 扫描新生成的二维码，在 Web 批准连接，再核对 App 中的持仓。
 
