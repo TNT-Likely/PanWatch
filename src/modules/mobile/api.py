@@ -455,6 +455,7 @@ def create_router(
     get_stored_username: Callable[[Session], str | None],
     verify_login_credentials: Callable[[Session, str, str], None],
     get_app_version: Callable[[], str],
+    get_avatar_data_url: Callable[[Session], str],
     get_portfolio_summary: Callable[[Session], dict],
     load_positions_without_quotes: Callable[[Session, int | None], dict],
     read_agent_health: Callable[[Session], dict],
@@ -485,6 +486,11 @@ def create_router(
         )
         db.commit()
         return MobileResponse(data=grant)
+
+    @router.get("/profile/avatar")
+    def profile_avatar(credentials: Bearer, db: DB) -> MobileResponse[str]:
+        _verify_device(credentials, db, _PORTFOLIO_SCOPE)
+        return MobileResponse(data=get_avatar_data_url(db))
 
     @router.get("/portfolio")
     def portfolio(credentials: Bearer, db: DB) -> MobileResponse[Portfolio]:

@@ -41,6 +41,7 @@ All paths below are relative to `/api/mobile/v1`.
 | `DELETE /devices/{id}` | Web | Revoke the selected device and return its current record. Repeating the action preserves the original revocation time. |
 | `POST /session/refresh` | Phone | Exchange the current refresh bearer and a random `Idempotency-Key` for a rotated grant on the same instance. |
 | `GET /portfolio` | Phone | Send the issued access token as the Bearer value. |
+| `GET /profile/avatar` | Phone | When capabilities include `profile_avatar: true`, use the existing portfolio read grant to fetch the instance's current avatar. The response data is a PNG or JPEG data URL, or an empty string when the owner has cleared the avatar. |
 | `GET /symbols/watchlist` | Phone | Send a watchlist-enabled access token. Returns `market`, `symbol` and `name` in the Web watchlist order. |
 
 The QR is the JSON object returned under `data` when creating a pairing. Its fields are `kind` (`panwatch-pairing`), `protocol` (`1`), `pairing_id`, normalized `origin`, `challenge` and `expires_at`. It contains short-lived pairing material. The phone displays the confirmed origin before claiming and verifies the same origin in the grant before storing it.
