@@ -8,6 +8,8 @@
   Monitor A-shares, Hong Kong, and U.S. stocks, manage your portfolios, and research ideas with <a href="https://github.com/TauricResearch/TradingAgents">TradingAgents</a>. Self-host PanWatch with your preferred OpenAI-compatible provider or local models through Ollama.
 </p>
 
+> **PanWatch App beta** · [Join on iOS with TestFlight](https://testflight.apple.com/join/9Dn9fx7A) · [Sign up for Android closed testing](https://github.com/TNT-Likely/PanWatch/issues/307)
+
 <p align="center">
   <a href="#-feature-overview">Feature overview</a> · <a href="#core-features">Core features</a> · <a href="#quick-start">Quick start</a> · <a href="#reference">Reference</a> · <a href="#support-the-project">Support</a> · <a href="#contributing">Contributing</a>
 </p>
@@ -161,17 +163,18 @@ If you do not need browser features such as screenshots, set `PLAYWRIGHT_SKIP_BR
 
 ## Upgrade PanWatch for the mobile app
 
-The native app connects to your PanWatch server over HTTPS. Upgrade to [PanWatch 0.24.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.24.0) for the mobile notification inbox, account-level portfolio details and conversations grounded in your server’s data. [0.23.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.23.0) supports briefings, holdings metrics, price alerts and screening. Basic mobile connections are supported from [0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0).
+The native app connects to your PanWatch server over HTTPS. Use [PanWatch 0.24.1](https://github.com/TNT-Likely/PanWatch/releases/tag/0.24.1) for the mobile notification inbox, account-level portfolio details and conversations grounded in your server’s data. [0.23.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.23.0) supports briefings, holdings metrics, price alerts and screening. Basic mobile connections are supported from [0.21.0](https://github.com/TNT-Likely/PanWatch/releases/tag/0.21.0).
 
 1. Back up your existing data mount and keep it mounted at `/app/data`.
-2. For Docker Compose, set the existing service image to `sunxiao0721/panwatch:0.24.0`, then run `docker compose pull panwatch` and `docker compose up -d panwatch`. For `docker run`, pull that image and recreate the container with your existing environment, ports, and data mount.
+2. For Docker Compose, set the existing service image to `sunxiao0721/panwatch:0.24.1`, then run `docker compose pull panwatch` and `docker compose up -d panwatch`. For `docker run`, pull that image and recreate the container with your existing environment, ports, and data mount.
 3. Sign in on the web and confirm your holdings are present. In the app, recheck the same HTTPS address and sign in with your existing server credentials, or open **Settings → Connect a phone** on the web to create and approve a new QR connection. Reconnect and grant the requested permissions to use newly available features.
 
 To enable mobile conversations, set `MOBILE_ASSISTANT_MODEL_ID` to the numeric ID of a configured model on your server and restart PanWatch.
 
-### Android closed testing
+### Join the mobile beta
 
-The closed test covers all regions Google Play offers for this track. Sign in to Google Play with the Google account on the tester list, [join the Android closed test](https://play.google.com/apps/testing/com.tntlikely.panwatch), and install PanWatch from Google Play.
+- **iOS** · [Open the TestFlight invitation](https://testflight.apple.com/join/9Dn9fx7A) and install PanWatch.
+- **Android** · [Request access in the signup issue](https://github.com/TNT-Likely/PanWatch/issues/307). After your Google account is added within 24 hours, [opt in to the Google Play closed test](https://play.google.com/apps/testing/com.tntlikely.panwatch) with the same account and install PanWatch.
 
 On your upgraded server, open **Settings → Connect a phone**. Scan the new QR code with PanWatch, approve the connection on the web, and check that your holdings match.
 
