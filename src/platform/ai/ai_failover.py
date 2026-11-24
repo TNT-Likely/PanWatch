@@ -21,6 +21,7 @@ total_tokens_used` 等属性,兼容 TradingAgents 等需要底层配置的调用
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Callable
@@ -166,6 +167,10 @@ class FailoverAIClient:
 
     async def list_models(self) -> list[str]:
         return await self._primary.list_models()
+
+    async def close(self) -> None:
+        """Release the provider clients owned by this candidate chain."""
+        await asyncio.gather(*(client.client.close() for client, _ in self.candidates), return_exceptions=True)
 
     # ── 候选选取:优先非冷却;全部冷却则取主候选做恢复探测 ──────────
     def _iter_candidates(self) -> list[tuple[AIClient, str]]:
@@ -344,7 +349,7 @@ def build_failover_client(
             (
                 _make_client(
                     primary_service.base_url,
-                    primary_service.api_key,
+                    primary_service.api_key or "local",
                     primary_model.model,
                     proxy,
                 ),
@@ -386,7 +391,7 @@ def build_failover_client(
                 continue
             candidates.append(
                 (
-                    _make_client(svc.base_url, svc.api_key, m.model, proxy),
+                    _make_client(svc.base_url, svc.api_key or "local", m.model, proxy),
                     f"{svc.name}/{m.model}",
                 )
             )
@@ -399,21 +404,22 @@ def build_failover_client(
     return FailoverAIClient(candidates)
 
 
-def get_configured_failover_client(db, model_id: int | None = None) -> FailoverAIClient:
-    """Select the requested/default persisted model and build its failover chain.
-
-    HTTP routers in several business modules need an AI client.  Model selection is
-    infrastructure composition, so callers use this platform function instead of
-    borrowing a helper from the assistant's HTTP router.
-    """
+def resolve_configured_model(db, model_id: int | None = None):
+    """Resolve the requested model, then the default and first configured model."""
     from src.platform.persistence.models import AIModel, AIService
 
     model = None
     if model_id:
         model = db.query(AIModel).filter(AIModel.id == model_id).first()
     if not model:
-        model = db.query(AIModel).filter(AIModel.is_default == True).first()  # noqa: E712
+        model = db.query(AIModel).filter(AIModel.is_default.is_(True)).order_by(AIModel.id).first()
     if not model:
-        model = db.query(AIModel).first()
+        model = db.query(AIModel).order_by(AIModel.id).first()
     service = db.query(AIService).filter(AIService.id == model.service_id).first() if model else None
+    return model, service
+
+
+def get_configured_failover_client(db, model_id: int | None = None) -> FailoverAIClient:
+    """Use the persisted model selection and the instance's existing failover chain."""
+    model, service = resolve_configured_model(db, model_id)
     return build_failover_client(model, service, db=db)

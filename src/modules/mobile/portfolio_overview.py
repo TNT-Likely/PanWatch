@@ -26,6 +26,7 @@ def build_portfolio(summary: dict) -> Portfolio:
             quantity=position["quantity"],
             market_value=position["market_value"],
             currency={"HK": "HKD", "US": "USD"}.get(position["market"], "CNY"),
+            market_value_cny=position.get("market_value_cny"),
         )
         for account in summary["accounts"] for position in account["positions"]
     ]

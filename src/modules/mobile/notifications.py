@@ -2,16 +2,18 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from math import inf
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, PositiveInt
+from pydantic import BaseModel, FiniteFloat, PositiveInt
 from sqlalchemy import and_, func, literal, or_, select, tuple_
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from src.modules.mobile.fact_snapshots import FactPhase
+from src.modules.mobile.push import push_event
 from src.modules.mobile.schemas import MobileResponse
 from src.modules.notifications.schemas import NotificationSelection
 from src.modules.notifications.service import NotificationService, utc
@@ -30,6 +32,7 @@ class AlertTarget(BaseModel):
     title: str
     market: str
     symbol: str
+    observed_price: FiniteFloat | None = None
 
 
 class FactTarget(BaseModel):
@@ -90,9 +93,11 @@ def _item(event: NotificationEvent, read_at: datetime | None) -> InboxItem:
     if event.event_type == _FACT_EVENT:
         target = FactTarget(task_id=UUID(event.subject_id), phase=params["phase"])
     else:
+        price = params.get("price")
         target = AlertTarget(
             event_id=int(event.subject_id), title=event.display_snapshot["title"],
             market=params["market"], symbol=params["symbol"],
+            observed_price=float(price) if type(price) in (int, float) and -inf < price < inf else None,
         )
     return InboxItem(id=event.id, occurred_at=utc(event.occurred_at), read_at=utc(read_at), target=target)
 
@@ -122,6 +127,20 @@ def create_notifications_router(require_device: Callable[..., MobileDevice], ale
         return MobileResponse(data=InboxPage(
             items=items, observed_id=observed, next_before=items[-1].id if len(rows) > limit else None,
         ))
+
+    @router.get("/push/{event_id}")
+    def pushed_notice(event_id: UUID, route_id: UUID, db: DB, device: Device) -> MobileResponse[InboxItem]:
+        if alerts_scope not in device.scope.split():
+            raise api_error(403, "mobile_scope_required", "设备没有提醒管理权限。")
+        routed = push_event(db, device.id, event_id, route_id)
+        if routed is not None:
+            hit, _ = routed
+            row = db.execute(_inbox(device, alerts_scope).where(
+                NotificationEvent.dedupe_key == f"price_alert:{hit.id}",
+            )).one_or_none()
+            if row is not None:
+                return MobileResponse(data=_item(*row))
+        raise api_error(404, "mobile_notification_not_found", "此设备的通知摘要已不可用。")
 
     @router.get("/unread")
     def has_unread(db: DB, device: Device) -> MobileResponse[bool]:

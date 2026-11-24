@@ -1,8 +1,19 @@
 """Daily quote semantics for HTTP presentation; preserve raw vendor data."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from src.platform.scheduling import trading_calendar as calendar
+
+
+def quote_observed_at(quote: dict) -> datetime | None:
+    value = quote.get("observed_at")
+    if not isinstance(value, str) or len(value) < 16:
+        return None
+    try:
+        # A naive Quote.timestamp is recorded in the server process's local time.
+        return datetime.fromisoformat(value).astimezone(UTC)
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def daily_quote_fields(market: str, quote: dict | None, now: datetime | None = None) -> dict:
@@ -38,8 +49,6 @@ def quote_date_is_current(market: str, quote: dict) -> bool:
 
 def assistant_quote_fields(market: str, quote: dict, now: datetime | None = None) -> dict:
     """Strict source-time semantics; fetch time never proves a quote is live."""
-    from datetime import UTC
-
     observed = now or datetime.now(UTC)
     code = calendar._to_market_code(market)
     local_now = observed.astimezone(calendar._market_tz(code))

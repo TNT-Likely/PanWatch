@@ -18,9 +18,9 @@ from sqlalchemy.orm import Session
 from src.modules.mobile.assistant_facts import Context, Evidence, Source, gather_sources, requests_lookback
 from src.modules.mobile.assistant_reminders import ApprovalDecision, ApprovalView, approval_view, decide, stage_if_requested
 from src.modules.mobile.schemas import MobileResponse
-from src.platform.ai.ai_client import AIClient
+from src.platform.ai.ai_failover import build_failover_client, resolve_configured_model
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import AIModel, MobileAssistantApproval as Approval, MobileAssistantConversation as Conversation
+from src.platform.persistence.models import AIModel, AIService, MobileAssistantApproval as Approval, MobileAssistantConversation as Conversation
 from src.platform.persistence.models import MobileAssistantTurn as Turn
 from src.platform.persistence.models import MobileDevice
 from src.platform.runtime.config import Settings
@@ -65,14 +65,18 @@ class Detail(Summary):
     turns: list[TurnView]
 
 
-def _model(db: Session) -> AIModel | None:
-    key = Settings().mobile_assistant_model_id
-    return db.get(AIModel, key) if key is not None else None
+def _configured_model(db: Session) -> tuple[AIModel | None, AIService | None] | None:
+    model, provider = resolve_configured_model(db)
+    if model is not None and provider is not None:
+        return (model, provider) if model.model and provider.base_url else None
+    settings = Settings()
+    if settings.ai_api_key and settings.ai_base_url and settings.ai_model:
+        return None, None
+    return None
 
 
 def is_enabled(db: Session) -> bool:
-    model = _model(db)
-    return bool(model and model.model and model.service and model.service.base_url)
+    return _configured_model(db) is not None
 
 
 def _missing():
@@ -141,13 +145,13 @@ def _inputs(bind, rid, attempt, portfolio, aggregate_klines):
         if not row or row.attempt != attempt or row.state != "running":
             return None
         conv = db.get_one(Conversation, row.conversation_id)
-        model = _model(db)
-        if model is None or model.service is None:
-            raise RuntimeError("Mobile chat model unavailable")
+        configured = _configured_model(db)
+        if configured is None:
+            raise RuntimeError("Assistant model unavailable")
         sources = gather_sources(db, conv.device_id, conv.context, row.locale, portfolio, aggregate_klines, row.text)
         history = list(db.scalars(select(Turn).where(Turn.conversation_id == conv.id, Turn.ordinal < row.ordinal,
                                                       Turn.state == "complete").order_by(Turn.ordinal.desc()).limit(3)))
-        client = AIClient(model.service.base_url, model.service.api_key or "local", model.model)
+        client = build_failover_client(*configured, db=db)
         previous = [{"question": turn.text[:500], "answer": turn.answer[:800]} for turn in reversed(history)]
         return client, row.text, row.locale, previous, sources
 
@@ -299,7 +303,7 @@ async def _generate(bind, rid, attempt, portfolio, aggregate_klines) -> None:
                                 writing={"state": "failed", "attempt": None, "deadline": None})
     finally:
         if client is not None:
-            await client.client.close()
+            await client.close()
 
 
 def create_assistant_router(require_device, portfolio: Callable, aggregate_klines: Callable) -> APIRouter:

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from src.modules.mobile.schemas import WatchlistSymbol
 from src.modules.mobile.symbol_facts import QuoteSnapshot, quote_snapshot
+from src.platform.marketdata.instruments import AssetType
 from src.platform.marketdata.marketdata_client import get_market_data, md_quote_rows
 from src.platform.persistence.models import PriceAlertRule, Stock
 
@@ -25,6 +26,7 @@ _trend_cache = TTLCache(default_ttl_sec=600, max_size=512)
 
 class WatchlistObservation(BaseModel):
     target: WatchlistSymbol
+    asset_type: AssetType | None
     currency: Literal["CNY", "HKD", "USD"] | None
     quote: QuoteSnapshot | None
     enabled_alerts: int | None
@@ -48,11 +50,12 @@ class WatchlistTrend(BaseModel):
     source: str | None
 
 
-def _watchlist(db: Session) -> list[WatchlistSymbol]:
-    rows = db.execute(select(Stock.symbol, Stock.name, Stock.market).order_by(Stock.sort_order, Stock.id))
+def _watchlist(db: Session) -> list[tuple[WatchlistSymbol, AssetType | None]]:
+    rows = db.execute(select(Stock.symbol, Stock.name, Stock.market, Stock.asset_type).order_by(Stock.sort_order, Stock.id))
     by_key = {}
-    for symbol, name, market in rows:
-        by_key.setdefault((market, symbol), WatchlistSymbol(symbol=symbol, name=name, market=market))
+    for symbol, name, market, asset_type in rows:
+        target = WatchlistSymbol(symbol=symbol, name=name, market=market)
+        by_key.setdefault((market, symbol), (target, asset_type if asset_type in ("stock", "etf") else None))
     return list(by_key.values())
 
 
@@ -71,7 +74,7 @@ def load_watchlist_overview(db: Session, *, offset: int, limit: int, read_alerts
     targets = _watchlist(db)
     page = targets[offset:offset + limit]
     by_market = defaultdict(list)
-    for target in page:
+    for target, _ in page:
         if target.market in _CURRENCIES:
             by_market[target.market].append(target.symbol)
     quotes = {market: _quotes(market, symbols) for market, symbols in by_market.items()}
@@ -81,7 +84,7 @@ def load_watchlist_overview(db: Session, *, offset: int, limit: int, read_alerts
         enabled = select(PriceAlertRule.id).join(Stock, Stock.id == PriceAlertRule.stock_id).where(PriceAlertRule.enabled)
         enabled_alerts = db.scalar(select(func.count()).select_from(enabled.subquery()))
         if page:
-            keys = [(target.market, target.symbol) for target in page]
+            keys = [(target.market, target.symbol) for target, _ in page]
             rows = db.execute(
                 select(Stock.market, Stock.symbol, func.count(PriceAlertRule.id))
                 .join(PriceAlertRule, Stock.id == PriceAlertRule.stock_id)
@@ -92,11 +95,11 @@ def load_watchlist_overview(db: Session, *, offset: int, limit: int, read_alerts
     return WatchlistOverview(
         items=[
             WatchlistObservation(
-                target=target, currency=_CURRENCIES.get(target.market),
+                target=target, asset_type=asset_type, currency=_CURRENCIES.get(target.market),
                 quote=quotes.get(target.market, {}).get(target.symbol),
                 enabled_alerts=counts.get((target.market, target.symbol), 0) if read_alerts else None,
             )
-            for target in page
+            for target, asset_type in page
         ],
         total=len(targets),
         next_offset=offset + limit if offset + limit < len(targets) else None,
@@ -132,7 +135,7 @@ def _trend(target: WatchlistSymbol) -> WatchlistTrend:
 
 
 def load_watchlist_trends(db: Session, *, offset: int, limit: int) -> list[WatchlistTrend]:
-    page = _watchlist(db)[offset:offset + limit]
+    page = [target for target, _ in _watchlist(db)[offset:offset + limit]]
     if not page:
         return []
     with ThreadPoolExecutor(max_workers=min(4, len(page))) as pool:

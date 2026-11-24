@@ -21,6 +21,7 @@ _CURRENCY = {"CN": "CNY", "HK": "HKD", "US": "USD"}
 _INTENT = re.compile(r"提醒我|通知我|设置.{0,20}提醒|新建.{0,20}提醒|notify me|alert me|set (?:an? |a price )?alert", re.I)
 _QUALIFIED = re.compile(r"(?<![a-zA-Z])(?P<market>CN|HK|US)[ :：]+(?P<symbol>[a-zA-Z0-9.\-]{1,15})(?![a-zA-Z0-9])", re.I)
 _AMOUNT = r"(?P<price>[0-9]{1,10}(?:\.[0-9]{1,6})?)"
+_BELOW = {"<", "低于", "小于", "跌破", "below", "under", "less than"}
 _TTL = 30 * 60
 
 
@@ -54,9 +55,10 @@ def _terms(text, stock):
                     f"{stock.market}:{stock.symbol}"}, key=len, reverse=True)
     subject = "(?:" + "|".join(re.escape(n) for n in names if n) + ")"
     zh = (rf"(?:如果|当|若)?\s*(?:{subject}|这只(?:股票|标的)|该(?:股票|标的))?\s*(?:的)?(?:股价|价格|现价)?\s*"
-          rf"(?P<op><|>|低于|小于|跌破|高于|大于|突破)\s*{_AMOUNT}\s*(?P<currency>CNY|HKD|USD|人民币|港元|美元|元)?\s*(?:时|就)?")
+          rf"(?:严格\s*)?(?P<op><|>|低于|小于|跌破|高于|大于|突破)\s*{_AMOUNT}\s*"
+          rf"(?P<currency>CNY|HKD|USD|人民币|港元|美元|元)?\s*(?:时|就)?")
     en = (rf"(?:if |when )?(?:{subject}|this (?:stock|symbol))?\s*(?:['’]s\s+)?(?:the )?(?:price\s+)?"
-          rf"(?:is |goes |falls |rises )?(?P<op><|>|below|above|under|over)\s*"
+          rf"(?:is |goes |falls |rises )?(?:strictly )?(?P<op><|>|below|above|under|over|less than|greater than)\s*"
           rf"{_AMOUNT}\s*(?P<currency>CNY|HKD|USD)?")
     # Requiring a whole-statement match prevents silently discarding another
     # symbol, currency, condition, negation or time restriction in the question.
@@ -79,7 +81,7 @@ def _terms(text, stock):
         price = float(match.group("price"))
         if not math.isfinite(price) or price <= 0:
             return None
-        op = "<" if match.group("op").lower() in {"<", "低于", "小于", "跌破", "below", "under"} else ">"
+        op = "<" if match.group("op").lower() in _BELOW else ">"
         return op, price
     return None
 
@@ -103,8 +105,8 @@ def stage_if_requested(db: Session, device: MobileDevice, conv: Conversation, tu
     stock = db.scalar(select(Stock).where(Stock.market == market, Stock.symbol == symbol).order_by(Stock.id).limit(1)) if market else None
     parsed = _terms(turn.text, stock) if stock else None
     if not parsed:
-        turn.answer = ("请指定一个自选标的和一个明确价位，例如「当 CN 600901 价格低于 35 时提醒我」。"
-                       if zh else "Specify one watchlist symbol and one price, for example “Alert me when CN 600901 is below 35”.")
+        turn.answer = ("请指定一个标的，并设置价格严格高于或低于的门槛。可以说「当 CN 600901 价格低于 35 时提醒我」。"
+                       if zh else "Specify one symbol and a strict price threshold. For example, “Alert me when CN 600901 is below 35”.")
         return True
     op, price = parsed
     db.add(Approval(id=str(uuid4()), turn_id=turn.id, stock_id=stock.id, market=stock.market,

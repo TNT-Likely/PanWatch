@@ -4,20 +4,27 @@ import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, FiniteFloat
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.modules.mobile.fact_snapshots import FactPhase
 from src.modules.mobile.schemas import MobileResponse
 from src.platform.persistence.database import get_db
-from src.platform.persistence.models import DataSource
+from src.platform.persistence.models import DataSource, MobileDevice, MobileFactTask
 from src.web.errors import api_error
 
 
 DB = Annotated[Session, Depends(get_db)]
 RunState = Literal["running", "success", "failed", "cancelled", "skipped"]
+
+
+class FactBrief(BaseModel):
+    task_id: UUID
+    finished_at: int
 
 
 class AgentHealth(BaseModel):
@@ -28,6 +35,8 @@ class AgentHealth(BaseModel):
     next_run: datetime | None
     last_run: datetime | None
     result: RunState | None
+    fact_phase: FactPhase | None
+    latest_fact_brief: FactBrief | None
 
 
 class SourceHealth(BaseModel):
@@ -55,23 +64,43 @@ class Diagnostics(BaseModel):
 
 
 _RUN_STATES = {state: state for state in ("running", "success", "failed", "cancelled", "skipped")}
+_FACT_PHASE_BY_AGENT: dict[str, FactPhase] = {
+    "premarket_outlook": "premarket",
+    "intraday_monitor": "intraday",
+    "daily_report": "postmarket",
+}
 
 
-def create_diagnostics_router(require_device, read_agent_health: Callable[[Session], dict]) -> APIRouter:
-    router = APIRouter(dependencies=[Depends(require_device)])
+def _latest_fact_brief(db: Session, device_id: str, phase: FactPhase) -> FactBrief | None:
+    task = MobileFactTask
+    row = db.execute(select(task.id, task.finished_at).where(
+        task.device_id == device_id, task.phase == phase, task.state == "complete",
+        task.market.is_(None), task.symbol.is_(None), task.finished_at.is_not(None),
+    ).order_by(task.finished_at.desc(), task.created_at.desc(), task.id.desc()).limit(1)).first()
+    return FactBrief(task_id=row.id, finished_at=row.finished_at) if row else None
+
+
+def create_diagnostics_router(
+    require_device, read_agent_health: Callable[[Session], dict], *, fact_task_scopes: frozenset[str],
+) -> APIRouter:
+    router = APIRouter()
+    Device = Annotated[MobileDevice, Depends(require_device)]
 
     @router.get("/diagnostics")
-    def snapshot(db: DB) -> MobileResponse[Diagnostics]:
+    def snapshot(db: DB, device: Device) -> MobileResponse[Diagnostics]:
         from src.platform.marketdata.marketdata_client import get_market_data
 
+        can_read_facts = fact_task_scopes.issubset(device.scope.split())
         agents = []
         for row in read_agent_health(db)["agents"]:
             last = row["last_run"] or {}
             upcoming = row["next_runs"]
+            phase = _FACT_PHASE_BY_AGENT.get(row["name"]) if can_read_facts else None
             agents.append(AgentHealth(
                 name=row["name"], label=row["display_name"], enabled=row["enabled"], scheduled=row["scheduled"],
                 next_run=upcoming[0] if upcoming else None, last_run=last.get("created_at"),
                 result=_RUN_STATES.get(last.get("status")),
+                fact_phase=phase, latest_fact_brief=_latest_fact_brief(db, device.id, phase) if phase else None,
             ))
         health = get_market_data().health()
         sources = []
@@ -86,7 +115,7 @@ def create_diagnostics_router(require_device, read_agent_health: Callable[[Sessi
             ))
         return MobileResponse(data=Diagnostics(agents=agents, sources=sources))
 
-    @router.post("/diagnostics/sources/{source_id}/test")
+    @router.post("/diagnostics/sources/{source_id}/test", dependencies=[Depends(require_device)])
     async def test_source(source_id: int, db: DB) -> MobileResponse[SourceProbe]:
         from src.modules.market.data_collector import get_collector_manager
 

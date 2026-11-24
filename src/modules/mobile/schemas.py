@@ -138,6 +138,7 @@ class Holding(BaseModel):
     quantity: float
     market_value: float | None
     currency: Literal["CNY", "HKD", "USD"]
+    market_value_cny: float | None = None
 
 
 class SymbolHolding(Holding):

@@ -9,7 +9,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Path
 from marketdata.types import Bar
-from pydantic import BaseModel, FiniteFloat, field_validator
+from pydantic import AwareDatetime, BaseModel, FiniteFloat, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ from src.modules.mobile.schemas import MobileResponse, WatchlistSymbol
 from src.modules.mobile.screening import catalog_symbols
 from src.platform.marketdata.collectors.kline_collector import _calculate_macd, _calculate_rsi
 from src.platform.marketdata.marketdata_client import get_market_data, md_quote_rows
-from src.platform.marketdata.quote_display import assistant_quote_fields
+from src.platform.marketdata.quote_display import assistant_quote_fields, quote_observed_at
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Stock
 from src.web.errors import api_error
@@ -50,6 +50,7 @@ class QuoteSnapshot(BaseModel):
     date: date | None
     source_timestamp: datetime | None
     freshness: Literal["fresh", "delayed", "stale", "unknown"]
+    observed_at: AwareDatetime | None = None
 
 
 class DailyTechnicals(BaseModel):
@@ -99,7 +100,7 @@ def quote_snapshot(market: str, raw: dict | None) -> QuoteSnapshot | None:
     return QuoteSnapshot(
         price=raw["current_price"], change_pct=change if _finite(change) else None,
         source=raw.get("source") or None, date=fields["quote_date"],
-        source_timestamp=fields["source_timestamp"], freshness=fields["freshness"],
+        source_timestamp=fields["source_timestamp"], freshness=fields["freshness"], observed_at=quote_observed_at(raw),
     )
 
 
