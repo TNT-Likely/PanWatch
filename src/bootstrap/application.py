@@ -72,6 +72,7 @@ app.include_router(
         get_stored_username=auth.get_stored_username,
         verify_login_credentials=auth.verify_login_credentials,
         get_app_version=get_app_version,
+        get_avatar_data_url=settings.avatar_data_url,
         get_portfolio_summary=lambda db: accounts.get_portfolio_summary(db=db),
         load_positions_without_quotes=lambda db, account_id: accounts.get_portfolio_summary(
             account_id=account_id, include_quotes=False, db=db,

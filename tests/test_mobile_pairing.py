@@ -88,6 +88,31 @@ def _exchange(client, root, claim_key=PHONE_KEY):
     return client.post(f"{root}/exchange", headers=_bearer(claim_key))
 
 
+def test_device_reads_the_current_instance_avatar(instance, tmp_path, monkeypatch):
+    client, sessions = instance
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    owner = _owner(sessions)
+    qr = _start(client, owner)
+    root = f"{MOBILE}/pairings/{qr['pairing_id']}"
+    _approve(client, owner, root, qr)
+    grant = _exchange(client, root).json()["data"]
+    device = _bearer(grant["access_token"])
+    endpoint = f"{MOBILE}/profile/avatar"
+
+    assert client.get(endpoint).status_code == 401
+    assert client.get(endpoint, headers=owner).status_code == 401
+    assert client.get(endpoint, headers=device).json()["data"] == ""
+    photo = "data:image/png;base64,AAAA"
+    assert client.put("/api/settings/avatar", headers=owner, json={"value": photo}).status_code == 200
+    result = client.get(endpoint, headers=device)
+    assert result.headers["Cache-Control"] == "no-store"
+    assert result.json()["data"] == photo
+    assert client.put("/api/settings/avatar", headers=owner, json={"value": ""}).status_code == 200
+    assert client.get(endpoint, headers=device).json()["data"] == ""
+    assert client.delete(f"{MOBILE}/devices/{grant['device_id']}", headers=owner).status_code == 200
+    assert client.get(endpoint, headers=device).status_code == 401
+
+
 def _approve(client, owner, root, qr, *, renewable=False, manage_alerts=False, read_diagnostics=False, manage_watchlist=False):
     response = _claim(client, qr, renewable=renewable, manage_alerts=manage_alerts, read_diagnostics=read_diagnostics, manage_watchlist=manage_watchlist)
     assert response.status_code == 200, response.text
@@ -109,7 +134,7 @@ def test_pairing_requires_a_configured_login_and_same_https_origin(instance):
     assert client.get(f"{MOBILE}/capabilities").json()["data"] == {
         "service": "panwatch", "service_version": settings.get_app_version(),
         "protocol_min": 1, "protocol_max": 1, "pairing": False, "password_login": False, "portfolio_read": True, "assistant_chat": False,
-        "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
+        "profile_avatar": True, "session_refresh": True, "watchlist_read": True, "alerts_manage": True,
         "portfolio_metrics": True, "portfolio_contributions": True, "symbol_facts": True, "catalog_symbol_facts": True, "diagnostics_read": True,
         "disclosures": True, "disclosure_archive": True, "fact_tasks": True, "symbol_alert_history": True,
         "screening": True, "screening_metrics": True, "watchlist_manage": True,

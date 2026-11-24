@@ -118,26 +118,26 @@ def _avatar_dir() -> str:
     return d
 
 
-@router.get("/avatar")
-def get_avatar(db: Session = Depends(get_db)):
-    """读取用户头像:DB 存文件名,图片本体在 data/avatars/,读取后以 data URL 返回。
-
-    GET /avatar 无同名 GET /{key},不存在路由抢匹配问题。
-    """
+def avatar_data_url(db: Session) -> str:
     row = db.query(AppSettings).filter(AppSettings.key == AVATAR_KEY).first()
     fname = (row.value if row and row.value else "").strip()
-    if not fname:
-        return {"value": ""}
+    if fname not in {"avatar.jpg", "avatar.png"}:
+        return ""
     path = os.path.join(_avatar_dir(), fname)
     if not os.path.isfile(path):
-        return {"value": ""}
+        return ""
     try:
         with open(path, "rb") as f:
             raw = f.read()
     except OSError:
-        return {"value": ""}
-    mime = "image/png" if fname.lower().endswith(".png") else "image/jpeg"
-    return {"value": f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"}
+        return ""
+    mime = "image/png" if fname.endswith(".png") else "image/jpeg"
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+
+
+@router.get("/avatar")
+def get_avatar(db: Session = Depends(get_db)):
+    return {"value": avatar_data_url(db)}
 
 
 @router.put("/avatar")

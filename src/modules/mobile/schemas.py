@@ -21,6 +21,7 @@ class Capabilities(BaseModel):
     pairing: bool
     password_login: bool
     portfolio_read: bool = True
+    profile_avatar: bool = True
     portfolio_metrics: bool = True
     portfolio_overview: bool = True
     portfolio_contributions: bool = True
