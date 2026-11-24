@@ -21,7 +21,7 @@ it('shows settings and channels while provider and health requests are still pen
     if (path === '/settings/avatar') return { value: '' }
     return pending()
   })
-  render(wrap(<SettingsPage />))
+  render(wrap(<SettingsPage onConnectPhone={vi.fn()} />))
   expect(await screen.findByText('独立加载的通知渠道')).toBeTruthy()
   expect(document.getElementById('sec-system')).toBeTruthy()
   expect(document.getElementById('sec-feedback')).toBeNull()

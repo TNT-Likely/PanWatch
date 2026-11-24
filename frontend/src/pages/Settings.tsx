@@ -182,7 +182,7 @@ const emptyServiceForm: ServiceForm = { name: '', base_url: '', api_key: '' }
 const emptyModelForm: ModelForm = { name: '', service_id: null, model: '' }
 const emptyChannelForm: ChannelForm = { name: '', type: 'telegram', config: {} }
 
-export default function SettingsPage() {
+export default function SettingsPage({ onConnectPhone }: { onConnectPhone: () => void }) {
   const tour = useGuidedTour()
   const { t } = useTranslation(['configuration', 'common'])
   const confirmAction = useConfirm()
@@ -1072,7 +1072,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <MobileConnectionSection />
+        <MobileConnectionSection onOpen={onConnectPhone} />
 
         {/* MCP 访问令牌 */}
         <PatSection className="lg:col-span-7" />

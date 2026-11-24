@@ -7,6 +7,7 @@ import { fetchAPI, isAuthenticated } from '@panwatch/api/client'
 import LogsModal from '@panwatch/biz-ui/components/logs-modal'
 import AmbientBackground from '@panwatch/biz-ui/components/AmbientBackground'
 import AccountMenu from '@/components/AccountMenu'
+import { MobileConnectionButton, MobileConnectionDialog, readMobileConnections } from '@/components/MobileConnectionSection'
 import { GuidedTourProvider } from '@/components/onboarding/GuidedTour'
 import AssistantOpenBridge from '@/components/AssistantOpenBridge'
 import SelfCheckModal from '@/components/SelfCheckModal'
@@ -85,13 +86,17 @@ function App() {
   const { t } = useTranslation(['common', 'navigation'])
   const { mode, setMode } = useTheme()
   const location = useLocation()
+  const isLoginRoute = location.pathname === '/login'
   const isAssistantRoute = location.pathname === '/assistant' || location.pathname.startsWith('/assistant/')
   const [version, setVersion] = useState('')
   const [logsOpen, setLogsOpen] = useState(false)
+  const [mobileConnectionOpen, setMobileConnectionOpen] = useState(false)
+  const [firstMobileConnection, setFirstMobileConnection] = useState(false)
   const [selfCheckOpen, setSelfCheckOpen] = useState(false)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [upgradeInfo, setUpgradeInfo] = useState<{ latest: string; url: string } | null>(null)
   const checkedUpdateRef = useRef(false)
+  const openMobileConnection = () => setMobileConnectionOpen(true)
   const repoUrl = 'https://github.com/TNT-Likely/PanWatch'
   const navItems = NAV_ITEMS.map(item => ({
     to: item.to,
@@ -108,6 +113,15 @@ function App() {
       .then(data => setVersion(data?.version || ''))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (isLoginRoute || mobileConnectionOpen || !isAuthenticated()) return
+    const controller = new AbortController()
+    void readMobileConnections(controller.signal).then(({ pairing, devices }) => {
+      if (!controller.signal.aborted) setFirstMobileConnection(pairing && devices.length === 0)
+    }).catch(() => {})
+    return () => controller.abort()
+  }, [isLoginRoute, mobileConnectionOpen])
 
   useEffect(() => {
     if (checkedUpdateRef.current) return
@@ -130,7 +144,7 @@ function App() {
   }, [version])
 
   // 登录页面不显示导航
-  if (location.pathname === '/login') {
+  if (isLoginRoute) {
     return (
       <RouteErrorBoundary>
         <Suspense fallback={<RouteLoadingFallback />}>
@@ -185,22 +199,23 @@ function App() {
                       }`}
                     />
                     <span
-                      className={`relative px-3.5 py-2 rounded-xl text-[13px] font-medium transition-all flex items-center gap-1.5 ${
+                      className={`relative px-2.5 py-2 xl:px-3.5 rounded-xl text-[13px] font-medium transition-all flex items-center gap-1.5 ${
                         isActive
                           ? 'text-foreground'
                           : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                       }`}
                     >
                       <Icon className={`w-4 h-4 ${isActive ? 'text-primary' : ''}`} />
-                      {label}
+                      <span className="sr-only lg:not-sr-only">{label}</span>
                     </span>
                   </NavLink>
                 )
               })}
             </nav>
 
-            {/* action wrapper:GitHub + 日志 + 头像(头像下拉含更多导航/主题色/退出) */}
+            {/* Header tools */}
             <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
+              <MobileConnectionButton firstConnection={firstMobileConnection} onClick={openMobileConnection} />
               <NotificationBell />
               <button
                 onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
@@ -229,16 +244,17 @@ function App() {
 
       {/* Mobile Top Bar */}
       <div className="sticky top-0 z-50 shrink-0 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 md:hidden">
-        <header className="card px-4">
+        <header className="card px-3 min-[380px]:px-4">
           <div className="h-12 flex items-center justify-between">
-            <NavLink to="/" className="flex shrink-0 items-center gap-2 group">
-              <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
+            <NavLink to="/" className="group flex min-w-0 items-center gap-2">
+              <div className="w-7 h-7 shrink-0 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm">
                 <TrendingUp className="w-3.5 h-3.5 text-white" />
               </div>
-              <span className="text-[14px] font-bold text-foreground">PanWatch</span>
-              {version && <span className="text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
+              <span className="truncate text-[14px] font-bold text-foreground">PanWatch</span>
+              {version && <span className="hidden min-[440px]:inline text-[10px] text-muted-foreground/60 font-normal">v{version}</span>}
             </NavLink>
-            <div className="flex shrink-0 items-center gap-1.5 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
+            <div className="flex shrink-0 items-center gap-1 px-1.5 py-1 rounded-2xl bg-accent/20 border border-border/40">
+              <MobileConnectionButton firstConnection={firstMobileConnection} onClick={openMobileConnection} />
               <NotificationBell mobile />
               <button
                 onClick={() => window.open(repoUrl, '_blank', 'noopener,noreferrer')}
@@ -313,12 +329,14 @@ function App() {
               <Route path="/assistant" element={<AssistantPage />} />
               <Route path="/assistant/:conversationId" element={<AssistantPage />} />
               <Route path="/datasources" element={<DataSourcesPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings" element={<SettingsPage onConnectPhone={openMobileConnection} />} />
               <Route path="/analysis/:symbol/:date" element={<AnalysisDetailPage />} />
             </Routes>
           </Suspense>
         </RouteErrorBoundary>
       </main>
+      <MobileConnectionDialog open={mobileConnectionOpen} onOpenChange={setMobileConnectionOpen}
+        onFirstConnectionChange={setFirstMobileConnection} />
       <LogsModal open={logsOpen} onOpenChange={setLogsOpen} />
       <SelfCheckModal open={selfCheckOpen} onClose={() => setSelfCheckOpen(false)} />
       <Dialog open={upgradeOpen} onOpenChange={setUpgradeOpen}>

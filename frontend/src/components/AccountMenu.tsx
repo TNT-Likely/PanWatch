@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Moon, Sun, Monitor, Check, LogOut, Stethoscope, Languages, type LucideIcon } from 'lucide-react'
+import { Moon, Sun, Monitor, LogOut, Stethoscope, type LucideIcon } from 'lucide-react'
 import { isAuthenticated, logout } from '@panwatch/api'
 import type { ThemeMode } from '@/hooks/use-theme'
 import { useAvatar } from '@/hooks/use-avatar'
@@ -25,6 +25,9 @@ const LANGUAGE_OPTIONS: { value: SupportedLocale; labelKey: 'simplifiedChinese' 
   { value: 'zh-CN', labelKey: 'simplifiedChinese' },
   { value: 'en-US', labelKey: 'english' },
 ]
+
+const preferenceOption = 'flex h-6 min-w-0 flex-1 items-center justify-center rounded-md px-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary aria-pressed:bg-primary/10 aria-pressed:text-primary [@media(pointer:coarse)]:h-8'
+const preferenceRow = 'col-span-2 grid grid-cols-[subgrid] items-center'
 
 interface AccountMenuProps {
   /** 原“更多”里折叠的导航项(Agent / 历史 / 数据源 / 设置)。 */
@@ -54,6 +57,7 @@ export default function AccountMenu({
   useInterfaceLanguage()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
+  const trigger = useRef<HTMLButtonElement | null>(null)
   const location = useLocation()
   const avatar = useAvatar()
   // 仅在支持 hover 的设备(PC)启用悬停展开;触屏维持点击
@@ -85,14 +89,23 @@ export default function AccountMenu({
       ref={ref}
       onMouseEnter={canHover ? () => setOpen(true) : undefined}
       onMouseLeave={canHover ? () => setOpen(false) : undefined}
+      onKeyDown={event => {
+        if (event.key !== 'Escape' || !open) return
+        event.stopPropagation()
+        setOpen(false)
+        trigger.current?.focus()
+      }}
     >
       <button
-        onClick={() => setOpen(v => !v)}
+        type="button"
+        ref={trigger}
+        onClick={event => setOpen(value => canHover && event.detail > 0 ? true : !value)}
         className={`${avatarSize} rounded-full overflow-hidden bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center shadow-sm ring-1 transition-all ${
           open ? 'ring-primary/50' : 'ring-border/40 hover:ring-primary/40'
         }`}
         title={t('account.menuTitle')}
         aria-label={t('account.menuTitle')}
+        aria-expanded={open}
       >
         <UserAvatar src={avatar} alt={t('account.avatarAlt')} />
       </button>
@@ -100,7 +113,7 @@ export default function AccountMenu({
       {open && (
         // top-full + pt-2:用透明内边距桥接头像与菜单,hover 移入不断开
         <div className="absolute right-0 top-full pt-2 z-50">
-          <div className="w-56 rounded-xl border border-border/60 bg-card/95 backdrop-blur p-1.5 shadow-xl">
+          <div className="scrollbar max-h-[calc(100dvh-8rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-56 max-w-[calc(100vw-3.5rem)] overflow-y-auto overscroll-contain rounded-xl border border-border/60 bg-card/95 p-1.5 shadow-xl backdrop-blur md:max-h-[calc(100dvh-5rem)]">
           {/* 原“更多”导航 */}
           {navItems.map(({ to, icon: Icon, label }) => {
             const isActive = location.pathname.startsWith(to)
@@ -123,47 +136,31 @@ export default function AccountMenu({
 
           <div className="my-1 h-px bg-border/50" />
 
-          {/* 主题色:亮 / 暗 / 跟随系统 */}
-          <div className="px-2.5 pt-0.5 pb-1 text-[11px] text-muted-foreground">{t('account.themeTitle')}</div>
-          {THEME_OPTIONS.map(({ value, icon: Icon, labelKey }) => {
-            const active = mode === value
-            return (
-              <button
-                key={value}
-                onClick={() => onSetMode(value)}
-                className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12px] transition-colors ${
-                  active
-                    ? 'text-foreground bg-accent/40'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {t(`account.theme.${labelKey}`)}
-                {active && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
-              </button>
-            )
-          })}
-
-          <div className="my-1 h-px bg-border/50" />
-          <div className="px-2.5 pt-0.5 pb-1 text-[11px] text-muted-foreground">{t('language.title')}</div>
-          {LANGUAGE_OPTIONS.map(({ value, labelKey }) => {
-            const active = currentLocale === value
-            return (
-              <button
-                key={value}
-                onClick={() => void changeLocale(value)}
-                className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-[12px] transition-colors ${
-                  active
-                    ? 'text-foreground bg-accent/40'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
-                }`}
-              >
-                <Languages className="w-3.5 h-3.5" />
-                {t(`language.${labelKey}`)}
-                {active && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
-              </button>
-            )
-          })}
+          <div className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-1 px-2 py-1">
+            <div className={preferenceRow} role="group" aria-label={t('account.themeTitle')}>
+              <p className="text-[11px] text-muted-foreground">{t('account.themeTitle')}</p>
+              <div className="flex gap-0.5 rounded-lg bg-accent/30 p-0.5">
+                {THEME_OPTIONS.map(({ value, icon: Icon, labelKey }) => {
+                  const label = t(`account.theme.${labelKey}`)
+                  return <button key={value} type="button" title={label} aria-label={label} aria-pressed={mode === value}
+                    className={preferenceOption} onClick={() => onSetMode(value)}>
+                    <Icon aria-hidden="true" className="h-4 w-4" />
+                  </button>
+                })}
+              </div>
+            </div>
+            <div className={preferenceRow} role="group" aria-label={t('language.title')}>
+              <p className="text-[11px] text-muted-foreground">{t('language.menuLabel')}</p>
+              <div className="flex gap-0.5 rounded-lg bg-accent/30 p-0.5">
+                {LANGUAGE_OPTIONS.map(({ value, labelKey }) => (
+                  <button key={value} type="button" lang={value} aria-pressed={currentLocale === value}
+                    className={`${preferenceOption} whitespace-nowrap`} onClick={() => void changeLocale(value)}>
+                    {t(`language.${labelKey}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
           <div className="my-1 h-px bg-border/50" />
           {/* 系统自检:打开弹窗(逐项检查数据源/AI/通知连通性) */}
