@@ -20,13 +20,14 @@ from tradingagents.graph.propagation import Propagator
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 
 from src.modules.automation.tradingagents import toolkit_adapter as adapter
+from src.modules.automation.tradingagents.data_context import to_tradingagents_portfolio
 from src.modules.automation.tradingagents.decision import map_state_to_result
 from src.modules.automation.tradingagents.observability import PanWatchProgressHandler
 from src.modules.automation.tradingagents.runtime_support import build_ta_llm_config
 
 
-def test_v070_exposes_the_panwatch_extension_contract():
-    assert version("tradingagents") == "0.7.0"
+def test_v07_exposes_the_panwatch_extension_contract():
+    assert version("tradingagents") == "0.7.1"
     assert "portfolio" in inspect.signature(TradingAgentsGraph.propagate).parameters
     assert "portfolio_context" in inspect.signature(Propagator.create_initial_state).parameters
     assert "callbacks" in inspect.signature(Propagator.get_graph_args).parameters
@@ -35,6 +36,18 @@ def test_v070_exposes_the_panwatch_extension_contract():
     assert "fill_gaps" in inspect.signature(ohlcv.load_ohlcv).parameters
     assert "symbol" not in tools.get_stock_data.tool_call_schema.model_fields
     assert "ticker" not in tools.get_fundamentals.tool_call_schema.model_fields
+
+
+def test_broker_hk_alias_matches_position_in_canonical_instrument():
+    holding = SimpleNamespace(symbol="700.HK", quantity=200, cost_price=450)
+    account = SimpleNamespace(available_funds=1000, positions=[holding])
+    portfolio = to_tradingagents_portfolio(SimpleNamespace(accounts=[account]))
+
+    position = portfolio.position_in("0700.HK")
+
+    assert position is not None
+    assert position.quantity == 200
+    assert position.average_price == 450
 
 
 def _data(symbol, market_code, close):
