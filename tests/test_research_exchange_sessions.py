@@ -1,6 +1,7 @@
 """Exchange-local scheduling and cross-midnight attribution for session research."""
 import asyncio
 from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -9,14 +10,16 @@ from sqlalchemy.orm import Session
 
 from pan_investment_research import Recommendation, ResearchInput, ResearchResult, Security
 from src.modules.automation.daily_report import DailyReportAgent
+from src.modules.automation import agent_scheduler
+from src.modules.automation.premarket_outlook import PremarketOutlookAgent
 from src.modules.automation.scheduling_policy import market_allowed, schedule_phase
-from src.modules.research.orchestration import service
+from src.modules.research.orchestration import evidence, service
 from src.modules.research.orchestration.evidence import prior_plan
 from src.modules.research.orchestration.models import ResearchDelivery, ResearchRun
 from src.platform.marketdata.models import MarketCode
 from src.platform.persistence.models import AgentContextRun, AgentPredictionOutcome, AnalysisHistory, StockSuggestion
 from src.platform.scheduling.schedule_parser import preview_schedule
-from test_investment_research_integration import host, make_context
+from test_investment_research_integration import collected, host, make_context
 
 
 @pytest.mark.parametrize(("agent", "at", "expected"), [
@@ -126,3 +129,102 @@ def test_legacy_plan_on_exchange_date_rejects_next_day_and_future_edits(host):
         db.scalars(select(AnalysisHistory).where(AnalysisHistory.analysis_date == "2026-11-25")).one().updated_at = (
             cutoff.astimezone(timezone.utc) + timedelta(seconds=1))
     assert asyncio.run(prior_plan("US:AAPL", cutoff, "Asia/Shanghai")) is None
+
+
+@pytest.mark.parametrize("source", ["graph", "history"])
+def test_legacy_premarket_targets_the_next_open_including_holidays(host, source):
+    engine, _ = host
+    ny = ZoneInfo("America/New_York")
+    wednesday = datetime(2026, 11, 25, 8, 30, tzinfo=ny)
+    wednesday_close = wednesday.replace(hour=16, minute=30)
+    friday_close = datetime(2026, 11, 27, 13, 30, tzinfo=ny)
+    with Session(engine) as db, db.begin():
+        for name, when in [("morning", wednesday), ("after-close", wednesday.replace(hour=16, minute=10))]:
+            at = when.astimezone(timezone.utc)
+            raw = {"suggestions": {"US:AAPL": {"action": "watch", "triggers": [name]}}}
+            if source == "graph":
+                db.add(ResearchRun(id=name, trace_id=name, scope_hash=name, engine="langgraph", agent_name="premarket_outlook",
+                    status="completed", as_of=at.isoformat(), finished_at=at))
+                db.add(ResearchDelivery(run_id=name, payload_hash=name, status="committed", payload={"raw_data": raw}))
+            else:
+                db.add(AnalysisHistory(agent_name="premarket_outlook", stock_symbol="*",
+                    analysis_date=at.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat(),
+                    content="", created_at=at, updated_at=at, raw_data=raw))
+    for when, trigger in [(wednesday_close, "morning"), (friday_close, "after-close")]:
+        assert asyncio.run(prior_plan("US:AAPL", when, "Asia/Shanghai")) == {
+            "analysis_date": when.date().isoformat(), "action": "watch", "triggers": [trigger]}
+
+
+@pytest.mark.parametrize(("scheduled", "all_late"), [(True, False), (True, True), (False, True)])
+def test_premarket_crossing_open_keeps_scheduled_date_or_uses_manual_observation(host, monkeypatch, scheduled, all_late):
+    engine, model = host
+    keys = [(MarketCode.CN, "600519"), (MarketCode.HK, "00700")]
+    context = make_context("sch-premarket-boundary" if scheduled else "man-premarket-boundary", keys)
+    agent = PremarketOutlookAgent()
+    before = datetime(2026, 11, 25, 1, 29, tzinfo=timezone.utc)
+    after = before + timedelta(seconds=61)
+
+    class Clock(datetime):
+        instant = before
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.instant.astimezone(tz) if tz else cls.instant.replace(tzinfo=None)
+
+    async def collect(scoped):
+        # Each market finishes independently; waiting for HK must not make CN's capture late.
+        if all_late or scoped.watchlist[0].market == MarketCode.HK:
+            Clock.instant = after
+        data = await collected(scoped)
+        quote = data["signal_pack"].quote
+        quote.source = "scheduled-premarket-fixture"
+        quote.quote_date = (before - timedelta(days=1)).date()
+        quote.source_timestamp = None
+        return data
+
+    monkeypatch.setattr(agent_scheduler, "datetime", Clock)
+    monkeypatch.setattr(evidence, "datetime", Clock)
+    monkeypatch.setattr(agent, "collect", collect)
+    record = Mock()
+    monkeypatch.setattr(agent_scheduler, "record_agent_run", record)
+    if scheduled:
+        scheduler = agent_scheduler.AgentScheduler()
+        scheduler.agents[agent.name] = agent
+        scheduler.set_context_builder(lambda name: context)
+        asyncio.run(scheduler._run_agent(agent.name, stock_keys=keys))
+    else:
+        asyncio.run(agent.run(context))
+    with Session(engine) as db:
+        delivery = db.scalars(select(ResearchDelivery)).one()
+        result = delivery.payload["raw_data"]
+        if not scheduled:
+            assert result["completion"] == "complete" and "missed_premarket" not in result
+            assert result["market_dates"] == {"CN": "2026-11-26", "HK": "2026-11-26"}
+            return
+        assert result["analysis_date"] == "2026-11-25"
+        missed = {"HK:00700": "2026-11-25"}
+        if all_late:
+            missed["CN:600519"] = "2026-11-25"
+            assert delivery.status == "skipped" and result["research_reason"] == "premarket_window_closed"
+            assert not model.calls and not db.scalars(select(AgentPredictionOutcome)).all()
+            record.assert_not_called()
+        else:
+            assert result["completion"] == "complete" and result["scope"] == ["CN:600519"]
+            assert result["market_dates"] == {"CN": "2026-11-25"}
+            assert set(result["suggestions"]) == {"CN:600519"}
+            assert {outcome.prediction_date for outcome in db.scalars(select(AgentPredictionOutcome))} == {"2026-11-25"}
+            record.assert_called_once()
+        assert result["missed_premarket"] == missed
+
+
+def test_legacy_plan_one_microsecond_before_open_belongs_to_that_session(host):
+    engine, _ = host
+    opening = datetime(2026, 11, 25, 14, 30, tzinfo=timezone.utc)
+    with Session(engine) as db, db.begin():
+        for name, captured in [("before", opening - timedelta(microseconds=1)), ("opening", opening)]:
+            db.add(ResearchRun(id=name, trace_id=name, scope_hash=name, engine="langgraph", agent_name="premarket_outlook",
+                status="completed", as_of=captured.isoformat(), finished_at=captured))
+            db.add(ResearchDelivery(run_id=name, payload_hash=name, status="committed", payload={
+                "raw_data": {"suggestions": {"US:AAPL": {"action": "watch", "triggers": [name]}}}}))
+    plan = asyncio.run(prior_plan("US:AAPL", opening + timedelta(hours=7), "Asia/Shanghai"))
+    assert plan == {"analysis_date": "2026-11-25", "action": "watch", "triggers": ["before"]}

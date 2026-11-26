@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,6 +13,7 @@ from src.platform.observability.log_context import log_context
 from src.platform.observability import otel
 from src.modules.automation.scheduling_policy import market_allowed, scoped_context
 from src.platform.scheduling.schedule_parser import parse_schedule
+from src.platform.scheduling.trading_calendar import exchange_session_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,8 @@ class AgentScheduler:
 
         # Registered scopes are known before context construction. Closed markets
         # must not create model clients, perform collection, or emit failed runs.
-        if stock_keys is not None and not any(market_allowed(agent_name, market) for market, _symbol in stock_keys):
+        premarket_at = datetime.now(timezone.utc) if agent_name == "premarket_outlook" else None
+        if stock_keys is not None and not any(market_allowed(agent_name, market, premarket_at) for market, _symbol in stock_keys):
             logger.debug("[调度] %s 关联市场不满足交易日/时段，跳过", agent_name)
             return
 
@@ -102,11 +105,16 @@ class AgentScheduler:
                 if stock_keys is not None:
                     keys = set(stock_keys)
                     targets = [stock for stock in targets if (stock.market, stock.symbol) in keys]
-                eligible = [stock for stock in targets if market_allowed(agent_name, stock.market)]
+                eligible = [stock for stock in targets if market_allowed(agent_name, stock.market, premarket_at)]
                 if not eligible:
                     logger.debug("[调度] %s 无符合交易日/时段的关联股票，跳过", agent_name)
                     return
                 context = scoped_context(context, eligible)
+                if premarket_at is not None:
+                    context._scheduled_premarket_openings = {
+                        market: exchange_session_boundary(market, premarket_at, next_open=True)
+                        for market in {stock.market for stock in eligible}
+                    }
                 logger.info(f"[调度] 开始执行 Agent: {agent.display_name}")
                 mode = self.execution_modes.get(agent_name, "batch")
                 if mode == "single" and hasattr(agent, "run_single"):

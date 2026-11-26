@@ -109,6 +109,11 @@ class Dependencies:
     repaired: set = field(default_factory=set)
     started: float = field(default_factory=time.monotonic)
 
+    async def use_feedback(self, reserve, *, plan_revision=False):
+        if self.policy.feedback_scope == "plan_only" and not plan_revision:
+            raise BudgetExceeded("feedback is reserved for a risk-requested plan revision")
+        await self.budget.use_feedback(reserve=reserve)
+
     def premarket_debate_window(self):
         if self.policy.profile != "premarket":
             return None
@@ -528,7 +533,7 @@ class InvestmentResearch:
 
         async def patch(state, runtime: Runtime[Dependencies]):
             deps = runtime.context
-            await deps.budget.use_feedback(reserve=5)
+            await deps.use_feedback(reserve=5)
             report = RoleReport.model_validate(state["report"])
             epoch = state.get("epoch", 0) + 1
             if report.verdict == "rebuttal":
@@ -660,7 +665,7 @@ class InvestmentResearch:
                 raise ValueError("a risk-requested plan revision requires a concrete, scoped issue")
             # The host's deterministic final decision needs no model attempt.
             reserve = (1 if deps.finalize_plan else 2) if plan_revision else 5
-            await deps.budget.use_feedback(reserve=reserve, plan_revision=plan_revision)
+            await deps.use_feedback(reserve, plan_revision=plan_revision)
             if state["verdict"] == "evidence_needed":
                 # A patch re-runs only the responsible expert and its research manager.
                 if not state["issues"]:

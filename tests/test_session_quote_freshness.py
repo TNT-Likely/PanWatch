@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from src.modules.automation.daily_report import DailyReportAgent
 from src.modules.automation.intraday_monitor import IntradayMonitorAgent
 from src.modules.automation.premarket_outlook import PremarketOutlookAgent
-from src.modules.research.orchestration.quotes import research_date, session_quote_validity
+from src.modules.research.orchestration.evidence import research_date, session_quote_validity
 from src.platform.marketdata.models import MarketCode
 from src.platform.persistence.models import AgentPredictionOutcome, StockSuggestion
 from test_investment_research_integration import collected, host, make_context

@@ -117,14 +117,46 @@ def test_unavailable_quotes_are_not_reported_as_a_quiet_market(host, monkeypatch
         assert db.scalars(select(ResearchDelivery)).one().status == "committed"
 
 
+def test_same_day_rerun_commits_both_reports_without_duplicating_suggestions(host, monkeypatch):
+    engine, _ = host
+    agent = DailyReportAgent()
+    monkeypatch.setattr(agent, "collect", collected)
+    for trace in ("repeat-first", "repeat-second"):
+        result = asyncio.run(agent.run(make_context(trace)))
+        assert result.raw_data["completion"] == "complete"
+    with Session(engine) as db:
+        assert len(db.scalars(select(StockSuggestion)).all()) == 1
+        assert [row.status for row in db.scalars(select(ResearchDelivery))] == ["committed", "committed"]
+        assert len(db.scalars(select(AgentPredictionOutcome)).all()) == 4
+
+
+def test_suggestion_deduplication_respects_trading_date_and_extends_expiry(host):
+    from src.modules.automation.suggestion_pool import save_suggestion
+
+    engine, _ = host
+    for day, hours in ((None, 4), (None, 6), ("2026-11-24", 4), ("2026-11-25", 4), ("2026-11-25", 12)):
+        with Session(engine) as db, db.begin():
+            assert save_suggestion("600519", "Fixture", "watch", "观察", "premarket_outlook",
+                                   expires_hours=hours, meta={"analysis_date": day} if day else {}, db_session=db)
+    with Session(engine) as db:
+        rows = db.scalars(select(StockSuggestion).order_by(StockSuggestion.id)).all()
+        assert [row.meta.get("analysis_date") for row in rows] == [None, "2026-11-24", "2026-11-25"]
+        assert rows[2].expires_at - rows[1].expires_at >= timedelta(hours=7, minutes=59)
+
+
 @pytest.mark.parametrize("agent_cls", [PremarketOutlookAgent, IntradayMonitorAgent, DailyReportAgent])
-def test_failed_collection_group_keeps_other_groups_and_blocks_formal_outputs(host, monkeypatch, agent_cls):
+@pytest.mark.parametrize("source_failure", ["exception", "invalid_batch", "invalid_stock"])
+def test_failed_collection_group_keeps_other_groups_and_blocks_formal_outputs(host, monkeypatch, agent_cls, source_failure):
     engine, model = host
     agent = agent_cls()
     configure(engine, agent.name, max_group_size=1)
 
     async def collect_group(context):
         if context.watchlist[0].symbol == "600000":
+            if source_failure == "invalid_batch":
+                return {"signal_packs": ["vendor error"]}
+            if source_failure == "invalid_stock":
+                return {"signal_packs": {"600000": {"error": "unavailable"}}}
             raise RuntimeError("controlled source failure")
         return await collected(context)
 

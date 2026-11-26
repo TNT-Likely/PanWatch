@@ -76,6 +76,23 @@ def exchange_session_boundary(market, instant: datetime, *, next_open: bool = Fa
     return None
 
 
+def premarket_plan_window(market, session_close: datetime) -> tuple[datetime, datetime]:
+    """UTC interval whose next regular opening is this session's opening."""
+    code = _to_market_code(market)
+    zone = _market_tz(code)
+    day = session_close.astimezone(zone).date()
+    opening = datetime.combine(day, trading_sessions(code, day)[0].start, zone)
+    earliest = datetime.combine(day, time.min, zone)
+    day -= timedelta(days=1)
+    while calendar_known(code, day):
+        sessions = trading_sessions(code, day)
+        earliest = datetime.combine(day, sessions[0].start if sessions else time.min, zone)
+        if sessions:
+            break
+        day -= timedelta(days=1)
+    return earliest.astimezone(timezone.utc), opening.astimezone(timezone.utc)
+
+
 def calendar_known(market, d: date | datetime | None = None) -> bool:
     code = _to_market_code(market)
     target = _resolve_date(code, d)

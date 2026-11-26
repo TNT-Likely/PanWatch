@@ -564,10 +564,11 @@ def test_prior_plan_is_same_market_day_before_cutoff_and_excludes_account_prose(
     from src.modules.research.orchestration.evidence import prior_plan
     engine, _ = host
     now = datetime(2026, 11, 25, 7, 30, tzinfo=timezone.utc)
+    premarket = datetime(2026, 11, 25, 1, 10, tzinfo=timezone.utc)
     day = now.astimezone(__import__('zoneinfo').ZoneInfo('Asia/Shanghai')).date().isoformat()
     with Session(engine) as db, db.begin():
         db.add(AnalysisHistory(agent_name='premarket_outlook', stock_symbol='*', analysis_date=day,
-            content='PRIVATE_CASH_PROSE', created_at=now - timedelta(hours=1), updated_at=now - timedelta(hours=1), raw_data={
+            content='PRIVATE_CASH_PROSE', created_at=premarket, updated_at=premarket, raw_data={
                 'suggestions': {'CN:600519': {'outlook': 'bullish', 'action': 'buy', 'reason': 'PRIVATE_CASH_PROSE',
                     'execution_constraints': ['insufficient_funds'], 'triggers': ['Break resistance'], 'invalidations': ['Break support']}}}))
     result = asyncio.run(prior_plan('CN:600519', now, 'Asia/Shanghai'))
