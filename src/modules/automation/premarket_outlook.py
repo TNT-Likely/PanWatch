@@ -33,25 +33,6 @@ class PremarketOutlookAgent(SessionResearchAgent):
             ",".join(symbols[:12]),
         )
 
-        # 2. 获取美股指数（隔夜表现）
-        us_indices = []
-        try:
-            from src.platform.marketdata.marketdata_client import get_market_data
-
-            items = await asyncio.to_thread(get_market_data().index_quotes, ["usDJI", "usIXIC", "usINX"])
-            for item in items:
-                us_indices.append(
-                    {
-                        "name": item.get("name") or item.get("symbol"),
-                        "current": item.get("current_price"),
-                        "change_pct": item.get("change_pct"),
-                    }
-                    )
-        except Exception as e:
-            logger.warning("[%s] 获取美股指数失败: %s", trace_id, e)
-        logger.info("[%s] 隔夜指数采集完成: count=%s", trace_id, len(us_indices))
-
-        # 3/4. SignalPack（技术面+持仓+新闻）
         builder = SignalPackBuilder()
         sym_list = [(s.symbol, s.market, s.name) for s in context.watchlist]
         packs = await builder.build_for_symbols(
@@ -64,8 +45,32 @@ class PremarketOutlookAgent(SessionResearchAgent):
             include_events=True,
             events_days=7,
         )
-        if capture := getattr(context, "_research_capture", None):
-            capture({"signal_packs": packs, "us_indices": us_indices})
+        capture = getattr(context, "_research_capture", None)
+        if capture:
+            capture({"signal_packs": packs})
+
+        us_indices = []
+        try:
+            from src.platform.marketdata.marketdata_client import get_market_data
+
+            items = await asyncio.to_thread(get_market_data().index_quotes, ["usDJI", "usIXIC", "usINX"])
+            for item in items:
+                us_indices.append(
+                    {
+                        "name": item.get("name") or item.get("symbol"),
+                        "current": item.get("current_price"),
+                        "change_pct": item.get("change_pct"),
+                        "market": "US",
+                        "quote_date": item.get("quote_date"),
+                        "source_timestamp": item.get("source_timestamp"),
+                    }
+                    )
+        except Exception as e:
+            logger.warning("[%s] 获取美股指数失败: %s", trace_id, e)
+        logger.info("[%s] 隔夜指数采集完成: count=%s", trace_id, len(us_indices))
+
+        if capture:
+            capture({"us_indices": us_indices})
         quote_ok = 0
         technical_ok = 0
         news_total = 0

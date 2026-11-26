@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import AgentConfig, AgentRun, LogEntry
-from src.modules.automation.scheduling_policy import schedule_plans, request_scheduler_reload
+from src.modules.automation.scheduling_policy import schedule_phase, schedule_plans, request_scheduler_reload
 from src.platform.scheduling.schedule_parser import parse_schedule, preview_schedule
 from src.platform.scheduling.schedule_parser import count_runs_within
 from src.platform.runtime.config import Settings
@@ -137,9 +137,9 @@ def agents_health(
                 runs = []
                 for plan in schedule_plans(db, a):
                     runs.extend(preview_schedule(plan.schedule, count=3, timezone=tz, start=now,
-                        markets=plan.markets, trading_hours_only=a.name == "intraday_monitor"))
+                        markets=plan.markets, phase=schedule_phase(a.name)))
                     next_24h_count += count_runs_within(plan.schedule, start=now, end=horizon,
-                        timezone=tz, markets=plan.markets, trading_hours_only=a.name == "intraday_monitor")
+                        timezone=tz, markets=plan.markets, phase=schedule_phase(a.name))
                 next_runs = [r.isoformat() for r in sorted(set(runs))[:3]]
             except Exception:
                 next_runs = []
@@ -357,7 +357,7 @@ def preview_schedule_expr(schedule: str, count: int = Query(default=5, ge=1, le=
         markets = sorted({market for plan in plans if plan.stock_agent_id is None for market in plan.markets})
     try:
         runs = preview_schedule(schedule, count=count, timezone=tz, markets=markets,
-                                trading_hours_only=agent_name == "intraday_monitor") if schedule else []
+                                phase=schedule_phase(agent_name)) if schedule else []
     except ValueError as exc:
         raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from exc
     return {"schedule": schedule, "timezone": tz, "next_runs": [r.isoformat() for r in runs],
@@ -374,7 +374,7 @@ def preview_agent_schedule(agent_name: str, count: int = Query(default=5, ge=1, 
     try:
         runs = [run for plan in schedule_plans(db, agent)
                 for run in preview_schedule(plan.schedule, count=count, timezone=tz,
-                    markets=plan.markets, trading_hours_only=agent_name == "intraday_monitor")]
+                    markets=plan.markets, phase=schedule_phase(agent_name))]
     except ValueError as exc:
         raise api_error(400, "agent_schedule_invalid", "调度表达式无法解析") from exc
     return {"schedule": agent.schedule, "timezone": tz,

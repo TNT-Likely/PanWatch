@@ -111,7 +111,30 @@ def build_report(agent_name, research, *, securities=(), evidence=(), scope=(), 
         technical = facts.get((key, "technical"), {})
         quote, indicators = technical.get("quote") or {}, technical.get("indicators") or {}
         if quote:
-            lines.append(tr("行情：", "Quote: ") + f"{number(quote.get('current_price'))} · {number(quote.get('change_pct'), signed=True)}%" + (f" · {stamp(quote['timestamp'])}" if quote.get("timestamp") else ""))
+            line = tr("行情：", "Quote: ") + f"{number(quote.get('current_price'))} · {number(quote.get('change_pct'), signed=True)}%"
+            if quote.get("source_timestamp"):
+                line += " · " + stamp(quote["source_timestamp"])
+            elif quote.get("quote_date"):
+                line += tr(" · 报价交易日 ", " · Quote trading date ") + text(quote["quote_date"])
+            lines.append(line)
+        else:
+            unavailable = technical.get("quote_unavailable") or sources.get(f"{key}/missing", {}).get("content", {})
+            explanations = {
+                "collection_failed": tr("该组行情采集失败", "Collection failed for this group"),
+                "collection_timeout": tr("该组行情采集超时", "Collection timed out for this group"),
+                "quote_missing": tr("数据源未返回报价", "The provider returned no quote"),
+                "quote_invalid_price": tr("数据源返回的价格无效", "The provider returned an invalid price"),
+                "quote_time_unknown": tr("数据源未提供本时段所需的报价日期或时间", "The provider did not supply the date or time this session requires"),
+                "quote_invalid_time": tr("数据源报价时间无效或与交易日冲突", "The provider timestamp is invalid or conflicts with the trading date"),
+                "quote_calendar_unknown": tr("交易所日历尚未确认该交易日", "The exchange calendar cannot confirm the trading session"),
+                "quote_wrong_session": tr("报价不属于本次研究所需的交易日", "The quote belongs to a different trading session"),
+                "quote_market_closed": tr("该市场当前不在盘中交易时段", "The market is outside its intraday trading hours"),
+                "quote_delayed": tr("来源报价已延迟", "The provider quote is delayed"),
+                "quote_before_close": tr("该报价早于当日收盘", "The quote predates the session close"),
+            }
+            if reason := explanations.get(unavailable.get("reason")):
+                origin = unavailable.get("source_timestamp") or unavailable.get("quote_date")
+                lines.append(tr("行情：", "Quote: ") + reason + (" · " + text(origin) if origin else ""))
         if completion in {"degraded", "data_unavailable"}:
             labels = {
                 "atr_price_change": tr("价格波动超过阈值", "Price change exceeded threshold"),

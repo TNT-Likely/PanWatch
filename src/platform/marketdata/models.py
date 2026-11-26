@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import date, datetime, time
 from enum import Enum
 from zoneinfo import ZoneInfo
 
@@ -85,6 +85,9 @@ class StockData:
     low_price: float
     prev_close: float
     timestamp: datetime = field(default_factory=datetime.now)
+    quote_date: date | None = None
+    source_timestamp: datetime | None = None
+    source: str = ""
 
 
 @dataclass
@@ -99,3 +102,5 @@ class IndexData:
     volume: float
     turnover: float
     timestamp: datetime = field(default_factory=datetime.now)
+    quote_date: date | None = None
+    source_timestamp: datetime | None = None

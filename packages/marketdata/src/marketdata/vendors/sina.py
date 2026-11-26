@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from marketdata.http import market_get
 from marketdata.symbol import Market, Symbol
@@ -38,6 +40,22 @@ def _to_float(value: str | None) -> float | None:
         return None
 
 
+def _us_regular_timestamp(parts: list[str]) -> datetime | None:
+    # Field 25 dates the regular-session price in field 1. Field 24 is the
+    # separate extended-hours quote. Field 3 supplies the missing year.
+    try:
+        feed_day = date.fromisoformat(parts[3][:10])
+        clock, abbreviation = parts[25].rsplit(" ", 1)
+        year = feed_day.year - int(feed_day.month == 1 and clock.startswith("Dec"))
+        stamp = datetime.strptime(f"{year} {clock}", "%Y %b %d %I:%M%p").replace(
+            tzinfo=ZoneInfo("America/New_York"))
+        if stamp.tzname() == abbreviation and stamp.date() <= feed_day:
+            return stamp
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
 def _parse_us_line(code: str, content: str) -> Quote | None:
     parts = content.split(",")
     if len(parts) < 30:
@@ -45,6 +63,7 @@ def _parse_us_line(code: str, content: str) -> Quote | None:
     price = _to_float(parts[1]) or 0.0
     if price <= 0:
         return None
+    stamp = _us_regular_timestamp(parts)
     return Quote(
         symbol=code.upper(),
         market="US",
@@ -57,6 +76,8 @@ def _parse_us_line(code: str, content: str) -> Quote | None:
         volume=_to_float(parts[10]),
         change_pct=_to_float(parts[2]),
         pe_ratio=_to_float(parts[14]),
+        quote_date=stamp.date() if stamp else None,
+        source_timestamp=stamp,
     )
 
 
@@ -67,6 +88,12 @@ def _parse_hk_line(code: str, content: str) -> Quote | None:
     price = _to_float(parts[6]) or 0.0
     if price <= 0:
         return None
+    quote_day, stamp = None, None
+    try:
+        quote_day = date.fromisoformat(parts[17].replace("/", "-"))
+        stamp = datetime.fromisoformat(f"{quote_day}T{parts[18]}").replace(tzinfo=ZoneInfo("Asia/Hong_Kong"))
+    except (ValueError, IndexError):
+        pass
     return Quote(
         symbol=code,
         market="HK",
@@ -80,6 +107,8 @@ def _parse_hk_line(code: str, content: str) -> Quote | None:
         change_pct=_to_float(parts[8]),
         turnover=_to_float(parts[11]),
         volume=_to_float(parts[12]),
+        quote_date=quote_day,
+        source_timestamp=stamp,
     )
 
 

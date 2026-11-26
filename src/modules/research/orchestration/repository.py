@@ -134,10 +134,12 @@ async def commit(run_id, agent, prepared, research, result, snapshots, targets, 
             return "stale"
         if research.completion == "skipped":
             return "skipped"
-        day = result.raw_data["analysis_date"]
+        report_date = result.raw_data["analysis_date"]
+        market_dates = result.raw_data["market_dates"]
         names = {s.key: s.name for s in prepared.securities}
         for rec in research.recommendations if research.completion == "complete" else []:
             market, symbol = rec.stock_key.split(":", 1)
+            day = market_dates[market]
             suggestion = normalize_suggestion(rec.model_dump(), agent_name=agent.name)
             save_suggestion(symbol, names[rec.stock_key], rec.action, suggestion["action_label"], agent.name,
                 reason=rec.reason, agent_label=agent.display_name, stock_market=market,
@@ -149,11 +151,11 @@ async def commit(run_id, agent, prepared, research, result, snapshots, targets, 
                     prediction_date=day, horizon_days=horizon, action=rec.action, action_label=suggestion["action_label"],
                     prediction_group_id=prediction_id, confidence=rec.confidence,
                     meta={"run_id": run_id, "suggestion_state": suggestion}, db_session=db)
-        save_agent_context_run(agent_name=agent.name, stock_symbol="*", analysis_date=day,
-            context_payload={"run_id": run_id, "symbols": snapshots}, db_session=db)
+        save_agent_context_run(agent_name=agent.name, stock_symbol="*", analysis_date=report_date,
+            context_payload={"run_id": run_id, "symbols": snapshots, "market_dates": market_dates}, db_session=db)
         history_scope = "*" if research.completion == "complete" else "*:degraded"
         save_analysis(agent.name, history_scope, result.content, result.title, raw_data=result.raw_data,
-                      analysis_date=date.fromisoformat(day), db_session=db)
+                      analysis_date=date.fromisoformat(report_date), db_session=db)
         for channel_key in targets:
             # Intraday throttles are scope-based; other reports also dedupe content.
             discriminator = "" if agent.name == "intraday_monitor" else build_notify_dedupe_key(agent.name, result.title, result.content)

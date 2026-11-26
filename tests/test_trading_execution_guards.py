@@ -63,7 +63,8 @@ def test_batch_agent_filters_watchlist_and_portfolio_before_analysis(monkeypatch
     from src.modules.automation.base import AgentContext, PortfolioInfo, AccountInfo, PositionInfo
     from src.platform.runtime.config import AppConfig, Settings, StockConfig
     from src.platform.marketdata.models import MarketCode
-    freeze(monkeypatch, datetime(2026, 10, 1, 22, tzinfo=ZoneInfo("Asia/Shanghai")))
+    # The October 1 US close falls on October 2 in Shanghai, a CN holiday.
+    freeze(monkeypatch, datetime(2026, 10, 2, 4, 30, tzinfo=ZoneInfo("Asia/Shanghai")))
     cn = StockConfig(symbol="601238", name="CN", market=MarketCode.CN)
     us = StockConfig(symbol="AAPL", name="US", market=MarketCode.US)
     positions = [PositionInfo(account_id=1, account_name="Account", stock_id=i, symbol=stock.symbol,

@@ -53,9 +53,11 @@ class Budget:
                 raise BudgetExceeded("tool budget exhausted")
             self.tools += 1
 
-    async def use_feedback(self, reserve=0):
+    async def use_feedback(self, reserve=0, *, plan_revision=False):
         async with self.lock:
             self.remaining()
+            if self.policy.feedback_scope == "plan_only" and not plan_revision:
+                raise BudgetExceeded("feedback is reserved for a risk-requested plan revision")
             # Feedback bounds convergence, even when resource budgets are disabled.
             if self.feedback >= self.policy.max_feedback or (self.policy.budget_enabled and self.attempts + reserve >= self.policy.max_attempts):
                 raise BudgetExceeded("feedback budget exhausted")

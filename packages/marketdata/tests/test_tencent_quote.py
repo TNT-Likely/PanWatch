@@ -38,6 +38,13 @@ def test_tencent_parses_quote(monkeypatch):
     assert q.source == "tencent"
 
 
+def test_us_session_date_preserves_vendor_precision():
+    row = _fake_line().replace("20260930150000", "2026-11-25 16:00:02")
+    quote = tv._parse_line(row, "US")
+    assert quote.quote_date.isoformat() == "2026-11-25"
+    assert quote.source_timestamp is None
+
+
 def test_tencent_empty_content_returns_empty(monkeypatch):
     monkeypatch.setattr(tv, "market_get", lambda *a, **k: None)
     assert tv.TencentQuoteVendor().fetch([Symbol.parse("600519")], {}) == []

@@ -140,7 +140,7 @@ class SignalPackBuilder:
         computed_at = self._now_iso()
         symbol_set = {s for s, _, _ in symbols}
 
-        quote_providers, quote_disabled = self._source_policy(
+        _, quote_disabled = self._source_policy(
             "quote", default_providers=["tencent"]
         )
         kline_providers, kline_disabled = self._source_policy(
@@ -163,44 +163,20 @@ class SignalPackBuilder:
         for market, items in by_market.items():
             missing = [s for s, _ in items if (market, s) not in self._quote_cache]
             if missing:
-                if quote_disabled:
-                    for sym in missing:
-                        self._quote_cache[(market, sym)] = None
-                        self._quote_source_cache[(market, sym)] = "disabled"
-                else:
-                    remaining = set(missing)
-                    for provider, cfg in quote_providers:
-                        if not remaining:
-                            break
-                        try:
-                            if provider != "tencent":
-                                logger.info(
-                                    f"SignalPack quote 未支持 provider={provider}，跳过"
-                                )
-                                continue
-
-                            stocks = await asyncio.to_thread(
-                                md_stock_data, sorted(remaining), market.value
-                            )
-                            got = {s.symbol: s for s in stocks}
-                            for sym in list(remaining):
-                                sd = got.get(sym)
-                                if not sd:
-                                    continue
-                                self._quote_cache[(market, sym)] = sd
-                                self._quote_source_cache[(market, sym)] = provider
-                                remaining.discard(sym)
-                        except Exception as e:
-                            logger.warning(
-                                f"SignalPack quotes 采集失败({market.value},{provider}): {e}"
-                            )
-                            continue
-
-                    for sym in remaining:
-                        self._quote_cache[(market, sym)] = None
-                        self._quote_source_cache.setdefault(
-                            (market, sym), "unavailable"
-                        )
+                quotes = {}
+                if not quote_disabled:
+                    try:
+                        # MarketData owns provider selection and failover for this market.
+                        rows = await asyncio.to_thread(md_stock_data, sorted(missing), market.value)
+                        quotes = {row.symbol: row for row in rows}
+                    except Exception as exc:
+                        logger.warning("SignalPack quotes 采集失败(%s): %s", market.value, type(exc).__name__)
+                for sym in missing:
+                    quote = quotes.get(sym)
+                    self._quote_cache[(market, sym)] = quote
+                    self._quote_source_cache[(market, sym)] = (
+                        (getattr(quote, "source", "") or "unknown") if quote else "disabled" if quote_disabled else "unavailable"
+                    )
 
             for sym, _ in items:
                 quote_map[sym] = self._quote_cache.get((market, sym))

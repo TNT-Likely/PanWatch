@@ -1,6 +1,8 @@
 """Replay session failures with the ordinary agent entry and isolated persistence."""
 import asyncio
 import json
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -115,8 +117,108 @@ def test_unavailable_quotes_are_not_reported_as_a_quiet_market(host, monkeypatch
         assert db.scalars(select(ResearchDelivery)).one().status == "committed"
 
 
+@pytest.mark.parametrize("agent_cls", [PremarketOutlookAgent, IntradayMonitorAgent, DailyReportAgent])
+def test_failed_collection_group_keeps_other_groups_and_blocks_formal_outputs(host, monkeypatch, agent_cls):
+    engine, model = host
+    agent = agent_cls()
+    configure(engine, agent.name, max_group_size=1)
+
+    async def collect_group(context):
+        if context.watchlist[0].symbol == "600000":
+            raise RuntimeError("controlled source failure")
+        return await collected(context)
+
+    monkeypatch.setattr(agent, "collect", collect_group)
+    context = make_context(keys=((MarketCode.CN, "600000"), (MarketCode.CN, "600519")))
+    result = asyncio.run(agent.run(context))
+    assert result.raw_data["completion"] == "degraded"
+    assert result.raw_data["research_report"]["runtime"]["group_failures"] == {"CN:600000": "data_unavailable"}
+    assert [draft["stock_key"] for draft in result.raw_data["drafts"]] == ["CN:600519"]
+    assert "行情：100.00" in result.content
+    assert model.calls["strategy"] == 1
+    with Session(engine) as db:
+        assert db.scalars(select(ResearchDelivery)).one().status == "committed"
+        assert db.scalars(select(AnalysisHistory)).one().raw_data["completion"] == "degraded"
+        assert not db.scalars(select(StockSuggestion)).all()
+        assert not db.scalars(select(AgentPredictionOutcome)).all()
+
+
+@pytest.mark.parametrize("error", [RuntimeError, TimeoutError])
+def test_all_collectors_failing_delivers_one_unavailable_result(host, monkeypatch, error):
+    engine, model = host
+    agent = IntradayMonitorAgent()
+    collect = AsyncMock(side_effect=error("controlled collection failure"))
+    monkeypatch.setattr(agent, "collect", collect)
+    context = make_context()
+    context.suppress_notify = False
+    for _ in range(2):
+        result = asyncio.run(agent.run(context))
+        assert result.raw_data["completion"] == "data_unavailable"
+        assert not result.raw_data["skipped"] and not result.raw_data["suggestions"]
+    assert not model.calls
+    collect.assert_awaited_once()
+    context.notifier.notify_with_result.assert_awaited_once()
+    with Session(engine) as db:
+        assert db.scalars(select(ResearchDelivery)).one().status == "committed"
+        assert db.scalars(select(AnalysisHistory)).one().raw_data["completion"] == "data_unavailable"
+
+
+@pytest.mark.parametrize("agent_cls", [PremarketOutlookAgent, DailyReportAgent])
+def test_collect_captures_stocks_before_optional_indices(host, monkeypatch, agent_cls):
+    from src.modules.research.context_builder import ContextBuilder
+    from src.modules.research.signals import SignalPackBuilder
+    from src.platform.marketdata import marketdata_client
+
+    context = make_context()
+    packs = asyncio.run(collected(context))["signal_packs"]
+    captured, at_index_request = {}, []
+    context._research_capture = captured.update
+    monkeypatch.setattr(SignalPackBuilder, "build_for_symbols", AsyncMock(return_value=packs))
+    monkeypatch.setattr(ContextBuilder, "build_symbol_contexts", AsyncMock(return_value={}))
+
+    def indices(*_):
+        at_index_request.append(captured.get("signal_packs") is packs)
+        raise OSError("controlled index outage")
+
+    agent = agent_cls()
+    if agent_cls is PremarketOutlookAgent:
+        monkeypatch.setattr(marketdata_client, "get_market_data", lambda: SimpleNamespace(index_quotes=indices))
+    else:
+        monkeypatch.setattr(agent, "_fetch_index_for_market", AsyncMock(side_effect=indices))
+    result = asyncio.run(agent.collect(context))
+    assert at_index_request == [True] and result["signal_packs"] is packs
+
+
 class ProcessLost(BaseException):
     """A worker exits without executing application error handlers."""
+
+
+def test_recovery_recollects_expired_quote_before_reusing_a_completed_group(host, monkeypatch):
+    engine, model = host
+    agent = DailyReportAgent()
+    context = make_context("sch-expired-quote")
+    collect = AsyncMock(side_effect=collected)
+    monkeypatch.setattr(agent, "collect", collect)
+    commit = repository.commit
+    monkeypatch.setattr(repository, "commit", AsyncMock(side_effect=ProcessLost))
+    with pytest.raises(ProcessLost):
+        asyncio.run(agent.run(context))
+    assert model.calls["strategy"] == 1
+    with Session(engine) as db, db.begin():
+        run = db.scalars(select(ResearchRun)).one()
+        assert run.payload["groups"]["portfolio"]["completion"] == "complete"
+        saved = deepcopy(run.payload)
+        saved["prepared"]["securities"][0]["quote_expires_at"] = (
+            datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        run.payload = saved
+        run.lease_until = 0
+    monkeypatch.setattr(repository, "commit", commit)
+    result = asyncio.run(agent.run(context))
+    assert result.raw_data["completion"] == "complete"
+    assert collect.await_count == model.calls["strategy"] == 2
+    with Session(engine) as db:
+        assert db.scalars(select(ResearchDelivery)).one().status == "committed"
+        assert len(db.scalars(select(AgentPredictionOutcome)).all()) == 2
 
 
 def test_recover_completed_group_and_pending_notice_without_replaying_models(host, monkeypatch):

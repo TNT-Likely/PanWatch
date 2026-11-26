@@ -7,9 +7,8 @@ import logging
 import sys
 
 from src.modules.automation.base import PortfolioInfo
-from src.platform.marketdata.models import MARKETS
 from src.platform.persistence.models import StockAgent
-from src.platform.scheduling.trading_calendar import is_trading_day
+from src.platform.scheduling.trading_calendar import market_eligible
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +44,13 @@ def schedule_plans(db, agent, *, global_schedule: str | None = None) -> list[Sch
     return plans
 
 
+def schedule_phase(agent_name: str) -> str | None:
+    return {"premarket_outlook": "pre_market", "intraday_monitor": "trading",
+            "daily_report": "after_hours"}.get(agent_name)
+
+
 def market_allowed(agent_name: str, market, dt=None) -> bool:
-    if agent_name == "intraday_monitor":
-        definition = MARKETS.get(market)
-        return definition is not None and definition.is_trading_time(dt)
-    return is_trading_day(market, dt)
+    return market_eligible(market, dt, phase=schedule_phase(agent_name))
 
 
 def scoped_context(context, watchlist):

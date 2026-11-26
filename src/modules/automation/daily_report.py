@@ -43,6 +43,8 @@ class DailyReportAgent(SessionResearchAgent):
                 volume=item["volume"],
                 turnover=item["turnover"],
                 timestamp=datetime.now(),
+                quote_date=item.get("quote_date"),
+                source_timestamp=item.get("source_timestamp"),
             )
             for item in items
         ]
@@ -59,13 +61,6 @@ class DailyReportAgent(SessionResearchAgent):
                 seen.add(s.market)
                 markets.append(s.market)
 
-        for market_code in markets:
-            try:
-                indices = await self._fetch_index_for_market(market_code)
-                all_indices.extend(indices)
-            except Exception as e:
-                logger.warning(f"获取 {market_code.value} 指数失败: {e}")
-
         builder = SignalPackBuilder()
         sym_list = [(s.symbol, s.market, s.name) for s in context.watchlist]
         packs = await builder.build_for_symbols(
@@ -78,8 +73,18 @@ class DailyReportAgent(SessionResearchAgent):
             include_events=True,
             events_days=7,
         )
-        if capture := getattr(context, "_research_capture", None):
-            capture({"signal_packs": packs, "indices": all_indices})
+        capture = getattr(context, "_research_capture", None)
+        if capture:
+            capture({"signal_packs": packs})
+
+        for market_code in markets:
+            try:
+                indices = await self._fetch_index_for_market(market_code)
+                all_indices.extend(indices)
+            except Exception as e:
+                logger.warning(f"获取 {market_code.value} 指数失败: {e}")
+        if capture:
+            capture({"indices": all_indices})
 
         context_builder = ContextBuilder()
         context_pack = await context_builder.build_symbol_contexts(

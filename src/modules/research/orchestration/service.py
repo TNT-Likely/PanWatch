@@ -21,6 +21,7 @@ from .evidence import prepare
 from .reporting import build_report
 from .gateway import ResearchModelGateway
 from .policies import SESSION_TIMEOUTS, validate_config
+from .quotes import research_date
 from .session_runtime import run_groups
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ async def execute(agent, context, config):
     deadline = started + duration
     owner = uuid.uuid4().hex
     signature = hashlib.sha256(json.dumps({
-        "version": 1, "policy": policy.model_dump(), "language": context.report_language,
+        "version": 2, "policy": policy.model_dump(), "language": context.report_language,
         "timezone": context.config.settings.app_timezone, "portfolio": to_jsonable(context.portfolio),
         "model": getattr(context.ai_client, "model", None), "endpoint": getattr(context.ai_client, "base_url", None),
         "models": [label for _, label in getattr(context.ai_client, "candidates", [])],
@@ -95,10 +96,12 @@ async def execute(agent, context, config):
         context._research_specialists = policy.specialists
         context._research_force = policy.trigger_mode == "always"
         prepared = ResearchInput.model_validate(checkpoint["prepared"]) if checkpoint.get("prepared") else None
-        zone = ZoneInfo(context.config.settings.app_timezone)
         now = datetime.now(timezone.utc)
         if (prepared is None or now - prepared.as_of > timedelta(seconds=SESSION_TIMEOUTS[agent.name] * 3)
-                or now.astimezone(zone).date() != prepared.as_of.astimezone(zone).date()):
+                or any(research_date(agent.name, stock.market, now) != research_date(agent.name, stock.market, prepared.as_of)
+                       for stock in context.watchlist)
+                or any(stock.price is not None and (stock.quote_expires_at is None or stock.quote_expires_at <= now)
+                       for stock in prepared.securities)):
             checkpoint = {}
             prepared, snapshots = await prepare(agent, context, run_id, deadline=started + duration * .65,
                 group_size=policy.max_group_size, concurrency=policy.concurrency)
@@ -167,11 +170,21 @@ def present(agent, context, prepared, research, *, elapsed_seconds=None):
         language=context.report_language, timezone=context.config.settings.app_timezone, elapsed_seconds=elapsed_seconds)
     suggestions = {rec.stock_key: normalize_suggestion(rec.model_dump(), agent_name=agent.name)
                    for rec in research.recommendations} if research.completion == "complete" else {}
+    markets = {stock.key.split(":", 1)[0] for stock in prepared.securities}
+    market_dates = {}
+    for market in sorted(markets):
+        day = research_date(agent.name, market, prepared.as_of)
+        if day is not None:
+            market_dates[market] = day.isoformat()
+    dates = set(market_dates.values())
+    # A mixed-date portfolio keeps one history entry on the user's report date.
+    report_date = (next(iter(dates)) if len(dates) == 1 else
+                   prepared.as_of.astimezone(ZoneInfo(context.config.settings.app_timezone)).date().isoformat())
     raw = {"engine": "langgraph", "research_run_id": prepared.run_id, "result_status": research.status,
         "completion": research.completion, "graph": research.graph, "skipped": research.completion == "skipped", "research_reason": research.reason, "research_report": report,
         "drafts": [r.model_dump() for r in research.recommendations] if research.completion != "complete" else [],
         "suggestions": suggestions, "symbols": [s.key.split(":", 1)[1] for s in prepared.securities],
         "scope": [s.key for s in prepared.securities],
-        "analysis_date": prepared.as_of.astimezone(ZoneInfo(context.config.settings.app_timezone)).date().isoformat(),
+        "analysis_date": report_date, "market_dates": market_dates,
         "usage": research.usage, "should_alert": research.completion not in {"complete", "skipped"} or any(s["should_alert"] for s in suggestions.values())}
     return AnalysisResult(agent_name=agent.name, title=title, content=report["content"], raw_data=raw)

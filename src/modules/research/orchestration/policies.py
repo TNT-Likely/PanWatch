@@ -15,7 +15,7 @@ SESSION_TIMEOUTS = {"intraday_monitor": 60, "premarket_outlook": 180, "daily_rep
 STABLE = {"specialists": ["technical", "events"], "debate": False, "max_feedback": 0}
 PRESETS = {
     "premarket_stable": {**STABLE, "deadline_seconds": 480},
-    "postmarket_stable": STABLE,
+    "postmarket_stable": {**STABLE, "max_feedback": 1, "feedback_scope": "plan_only"},
     "intraday_fast": {"graph": "intraday_fast", "specialists": ["technical", "events"], "debate": False,
         "max_feedback": 0, "max_attempts": 6, "max_tools": 2, "concurrency": 2,
         "max_output_tokens": 16000, "max_total_tokens": 200000, "deadline_seconds": 120},
@@ -60,6 +60,9 @@ def validate_config(config, agent_name):
             defaults.update(specialists=["technical"], max_feedback=0, max_tools=2, concurrency=2)
     else:
         defaults.update(deepcopy(PRESETS[template]))
+        if template == "postmarket_stable" and "max_feedback" in config and "feedback_scope" not in config:
+            # An existing explicit feedback setting applied to both research and plan revisions.
+            defaults.pop("feedback_scope")
     return mode, ResearchPolicy.model_validate({**defaults, **config})
 
 

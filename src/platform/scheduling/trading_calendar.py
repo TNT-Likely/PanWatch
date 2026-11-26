@@ -54,6 +54,28 @@ def _resolve_date(code, d: date | datetime | None) -> date:
     return d
 
 
+def market_local_date(market, instant: datetime) -> date:
+    """Date of a research observation at its exchange."""
+    return _resolve_date(_to_market_code(market), instant)
+
+
+def exchange_session_boundary(market, instant: datetime, *, next_open: bool = False) -> datetime | None:
+    """Most recent regular close, or next regular open, within published calendars."""
+    code = _to_market_code(market)
+    zone = _market_tz(code)
+    local = instant.astimezone(zone)
+    day = local.date()
+    step = timedelta(days=1 if next_open else -1)
+    while calendar_known(code, day):
+        sessions = trading_sessions(code, day)
+        if sessions:
+            boundary = datetime.combine(day, sessions[0].start if next_open else sessions[-1].end, zone)
+            if (next_open and boundary > local) or (not next_open and boundary <= local):
+                return boundary
+        day += step
+    return None
+
+
 def calendar_known(market, d: date | datetime | None = None) -> bool:
     code = _to_market_code(market)
     target = _resolve_date(code, d)
@@ -123,11 +145,39 @@ def market_status(market, dt: datetime | None = None) -> str:
     return "break"
 
 
-def eligible_markets(markets=None, dt: datetime | None = None, *, trading_hours_only: bool = False) -> list[str]:
+def _eligible_windows(code, day, phase):
+    sessions = trading_sessions(code, day)
+    if not sessions:
+        return []
+    tz = _market_tz(code)
+    if phase == "pre_market":
+        # The opening tick already belongs to the regular session.
+        opening = datetime.combine(day, sessions[0].start, tz)
+        return [(datetime.combine(day, time.min, tz), opening - timedelta(microseconds=1))]
+    if phase == "after_hours":
+        times = [(sessions[-1].end, time.max)]
+    elif phase == "trading":
+        times = [(session.start, session.end) for session in sessions]
+    else:
+        times = [(time.min, time.max)]
+    return [(datetime.combine(day, start, tz), datetime.combine(day, end, tz)) for start, end in times]
+
+
+def market_eligible(market, dt: datetime | None = None, *, phase: str | None = None) -> bool:
+    code = _to_market_code(market)
+    if not phase:
+        return is_trading_day(code, dt)
+    now = dt.astimezone(_market_tz(code)) if dt is not None else _now_in_market_tz(code)
+    return any(start <= now <= end for start, end in _eligible_windows(code, now.date(), phase))
+
+
+def eligible_markets(markets=None, dt: datetime | None = None, *, trading_hours_only: bool = False,
+                     phase: str | None = None) -> list[str]:
     from src.platform.marketdata.models import MARKETS
+    phase = phase or ("trading" if trading_hours_only else None)
     return [code.value for raw in (MARKETS if markets is None else markets)
             if (code := _to_market_code(raw)) is not None
-            and (market_status(code, dt) == "trading" if trading_hours_only else is_trading_day(code, dt))]
+            and market_eligible(code, dt, phase=phase)]
 
 
 def any_market_trading_day(d: date | datetime | None = None) -> bool:
@@ -135,24 +185,19 @@ def any_market_trading_day(d: date | datetime | None = None) -> bool:
     return any(is_trading_day(code, d) for code in MARKETS)
 
 
-def next_eligible_time(market, dt: datetime, *, trading_hours_only: bool = False) -> datetime | None:
+def next_eligible_time(market, dt: datetime, *, trading_hours_only: bool = False,
+                       phase: str | None = None) -> datetime | None:
     """Find a confirmed boundary, allowing preview to jump over closed periods."""
     code = _to_market_code(market)
     if code is None:
         return None
     local = dt.astimezone(_market_tz(code))
+    phase = phase or ("trading" if trading_hours_only else None)
     for offset in range(370):
         day = local.date() + timedelta(days=offset)
-        if not is_trading_day(code, day):
-            continue
-        earliest = local if offset == 0 else datetime.combine(day, time.min, _market_tz(code))
-        if not trading_hours_only:
-            return earliest
-        for session in trading_sessions(code, day):
-            opening = datetime.combine(day, session.start, _market_tz(code))
-            closing = datetime.combine(day, session.end, _market_tz(code))
-            if earliest <= closing:
-                return max(earliest, opening)
+        for start, end in _eligible_windows(code, day, phase):
+            if local <= end:
+                return max(local, start)
     return None
 
 
