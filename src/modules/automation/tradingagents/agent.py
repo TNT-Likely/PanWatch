@@ -58,7 +58,7 @@ class TradingAgentsUnavailable(RuntimeError):
 def _bounded_graph_class(graph_cls, *, api_key: str | None = None):
     """让 TradingAgentsGraph 把请求边界传给 LangChain LLM 客户端。
 
-    TradingAgents 0.7.0 通过 create_tier_client 构造两个模型。
+    TradingAgents 0.7 通过 create_tier_client 构造两个模型。
     仅在构造期间适配 timeout，保持上游工厂和并行图执行行为。
     """
 

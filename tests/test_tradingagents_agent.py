@@ -688,7 +688,7 @@ class TestPortfolioContext(unittest.TestCase):
         patch_instrument_context(graph, "")
         self.assertEqual(graph.propagator.create_initial_state, original)
 
-    def test_run_sync_passes_native_portfolio_and_captures_v070_settings(self):
+    def test_run_sync_passes_native_portfolio_and_captures_upstream_settings(self):
         """持仓进入原生图；run_settings() 的独立元数据必须进入持久化结果。"""
         from contextlib import nullcontext
 
@@ -704,7 +704,7 @@ class TestPortfolioContext(unittest.TestCase):
                 self.total_cost = 0.01
 
             def run_settings(self):
-                return {"version": "0.7.0", "deep_think_llm": "test-model"}
+                return {"version": "0.7.1", "deep_think_llm": "test-model"}
 
             def propagate(self, company_name, trade_date, asset_type="stock", portfolio=None):
                 captured.update({
@@ -741,7 +741,7 @@ class TestPortfolioContext(unittest.TestCase):
 
         self.assertEqual(result["decision"], "HOLD")
         self.assertEqual(result["final_state"]["run_settings"], {
-            "version": "0.7.0", "deep_think_llm": "test-model",
+            "version": "0.7.1", "deep_think_llm": "test-model",
         })
         self.assertEqual(captured["company_name"], "600519")
         self.assertIsInstance(captured["portfolio"], PortfolioContext)
