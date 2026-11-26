@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from marketdata.http import market_get
@@ -58,7 +58,12 @@ def _parse_line(line: str, market: str) -> Quote | None:
         quote_date = None
         source_timestamp = None
         # CN/HK source field 30 contains the exchange-local quote date/time.
-        # US vendor timestamps use different conventions; do not guess their timezone.
+        # US field 30 also carries the session date, but no UTC offset.
+        if market == "US":
+            try:
+                quote_date = date.fromisoformat(parts[30].split(" ", 1)[0])
+            except ValueError:
+                pass
         if market in ("CN", "HK"):
             for fmt, length in (("%Y%m%d", 8), ("%Y/%m/%d", 10), ("%Y-%m-%d", 10)):
                 try:
@@ -132,7 +137,9 @@ def fetch_raw(tencent_symbols: list[str]) -> list[dict]:
     """
     out: list[dict] = []
     for line in _fetch_lines(tencent_symbols):
-        q = _parse_line(line, "")
+        prefix = line.strip().split("=", 1)[0].removeprefix("v_")[:2].lower()
+        market = {"sh": "CN", "sz": "CN", "hk": "HK", "us": "US"}.get(prefix, "")
+        q = _parse_line(line, market)
         if q and q.current_price > 0:
             out.append({
                 "symbol": q.symbol,
@@ -143,6 +150,9 @@ def fetch_raw(tencent_symbols: list[str]) -> list[dict]:
                 "prev_close": q.prev_close,
                 "volume": q.volume,
                 "turnover": q.turnover,
+                "market": market,
+                "quote_date": q.quote_date,
+                "source_timestamp": q.source_timestamp,
             })
     return out
 

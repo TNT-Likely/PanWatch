@@ -26,10 +26,7 @@ def scheduler_fixture(monkeypatch, *, mode="single", markets=(), result=None):
     scheduler.agents["intraday_monitor"] = agent
     scheduler.execution_modes["intraday_monitor"] = mode
     scheduler.set_context_builder(lambda name: context)
-    monkeypatch.setattr(scheduling_policy, "MARKETS", {
-        MarketCode.CN: SimpleNamespace(name="CN", is_trading_time=lambda dt=None: False),
-        MarketCode.HK: SimpleNamespace(name="HK", is_trading_time=lambda dt=None: True),
-    })
+    monkeypatch.setattr(scheduling_policy, "market_eligible", lambda market, dt, phase: market == MarketCode.HK)
     record = Mock()
     monkeypatch.setattr(agent_scheduler, "record_agent_run", record)
     return scheduler, agent, context, record

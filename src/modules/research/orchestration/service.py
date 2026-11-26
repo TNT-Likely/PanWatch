@@ -9,7 +9,7 @@ import time
 import logging
 from zoneinfo import ZoneInfo
 
-from pan_investment_research import ResearchInput, ResearchPolicy
+from pan_investment_research import ResearchInput, ResearchPolicy, ResearchResult
 from pan_investment_research.budget import Budget
 
 from src.modules.automation.base import AnalysisResult
@@ -17,7 +17,7 @@ from src.modules.research.signals.actions import normalize_suggestion
 from src.platform.observability.log_context import get_log_context
 from src.platform.persistence.json_safe import to_jsonable
 from . import repository
-from .evidence import prepare
+from .evidence import prepare, research_date
 from .reporting import build_report
 from .gateway import ResearchModelGateway
 from .policies import SESSION_TIMEOUTS, validate_config
@@ -67,11 +67,13 @@ async def execute(agent, context, config):
         duration = min(duration, policy.deadline_seconds)
     deadline = started + duration
     owner = uuid.uuid4().hex
+    openings = getattr(context, "_scheduled_premarket_openings", {})
     signature = hashlib.sha256(json.dumps({
-        "version": 1, "policy": policy.model_dump(), "language": context.report_language,
+        "version": 2, "policy": policy.model_dump(), "language": context.report_language,
         "timezone": context.config.settings.app_timezone, "portfolio": to_jsonable(context.portfolio),
         "model": getattr(context.ai_client, "model", None), "endpoint": getattr(context.ai_client, "base_url", None),
         "models": [label for _, label in getattr(context.ai_client, "candidates", [])],
+        **({"premarket_openings": {market: opening.isoformat() for market, opening in openings.items()}} if openings else {}),
     }, sort_keys=True).encode()).hexdigest()
     prior = await repository.start(run_id, trace, agent.name, scope, mode, owner=owner,
                                    signature=signature, lease_seconds=duration + 30) or {}
@@ -95,10 +97,12 @@ async def execute(agent, context, config):
         context._research_specialists = policy.specialists
         context._research_force = policy.trigger_mode == "always"
         prepared = ResearchInput.model_validate(checkpoint["prepared"]) if checkpoint.get("prepared") else None
-        zone = ZoneInfo(context.config.settings.app_timezone)
         now = datetime.now(timezone.utc)
         if (prepared is None or now - prepared.as_of > timedelta(seconds=SESSION_TIMEOUTS[agent.name] * 3)
-                or now.astimezone(zone).date() != prepared.as_of.astimezone(zone).date()):
+                or (not openings and any(research_date(agent.name, stock.market, now) != research_date(agent.name, stock.market, prepared.as_of)
+                                         for stock in context.watchlist))
+                or any(stock.price is not None and (stock.quote_expires_at is None or stock.quote_expires_at <= now)
+                       for stock in prepared.securities)):
             checkpoint = {}
             prepared, snapshots = await prepare(agent, context, run_id, deadline=started + duration * .65,
                 group_size=policy.max_group_size, concurrency=policy.concurrency)
@@ -106,10 +110,12 @@ async def execute(agent, context, config):
                 await repository.checkpoint(run_id, owner, {
                     "$.prepared": prepared.model_dump(mode="json"), "$.snapshots": snapshots, "$.groups": {},
                     "$.usage": {}, "$.observations": context._research_gate_observations,
+                    "$.missed_premarket": getattr(context, "_missed_premarket", {}),
                 })
         else:
             snapshots = checkpoint.get("snapshots", {})
             context._research_gate_observations = checkpoint.get("observations", {})
+            context._missed_premarket = checkpoint.get("missed_premarket", {})
         if prepared is None:
             await repository.fail(run_id, "No eligible targets", owner=owner)
             return AnalysisResult(agent.name, agent.display_name, "No eligible targets", raw_data={"skipped": True})
@@ -123,8 +129,13 @@ async def execute(agent, context, config):
             })
 
         budget = Budget(policy, deadline=deadline - min(5, duration * .1), usage=checkpoint.get("usage"))
-        research = await run_groups(prepared, policy, ResearchModelGateway(context.ai_client), budget,
-            publish_event=publish, completed=checkpoint.get("groups", {}), save_group=save_group)
+        missed = getattr(context, "_missed_premarket", {})
+        if missed and all(stock.key in missed for stock in prepared.securities):
+            research = ResearchResult(run_id=run_id, graph=policy.graph, status="skipped", completion="skipped",
+                reason="premarket_window_closed", recommendations=[], artifacts=[])
+        else:
+            research = await run_groups(prepared, policy, ResearchModelGateway(context.ai_client), budget,
+                publish_event=publish, completed=checkpoint.get("groups", {}), save_group=save_group)
         result = present(agent, context, prepared, research, elapsed_seconds=time.monotonic() - started)
         agent.localize_result_title(result, context)
         notify = research.completion != "skipped" and can_notify
@@ -167,11 +178,24 @@ def present(agent, context, prepared, research, *, elapsed_seconds=None):
         language=context.report_language, timezone=context.config.settings.app_timezone, elapsed_seconds=elapsed_seconds)
     suggestions = {rec.stock_key: normalize_suggestion(rec.model_dump(), agent_name=agent.name)
                    for rec in research.recommendations} if research.completion == "complete" else {}
+    markets = {stock.key.split(":", 1)[0] for stock in prepared.securities}
+    market_dates = {}
+    openings = getattr(context, "_scheduled_premarket_openings", {})
+    for market in sorted(markets):
+        day = openings[market].date() if market in openings else research_date(agent.name, market, prepared.as_of)
+        if day is not None:
+            market_dates[market] = day.isoformat()
+    dates = set(market_dates.values())
+    # A mixed-date portfolio keeps one history entry on the user's report date.
+    report_date = (next(iter(dates)) if len(dates) == 1 else
+                   prepared.as_of.astimezone(ZoneInfo(context.config.settings.app_timezone)).date().isoformat())
     raw = {"engine": "langgraph", "research_run_id": prepared.run_id, "result_status": research.status,
         "completion": research.completion, "graph": research.graph, "skipped": research.completion == "skipped", "research_reason": research.reason, "research_report": report,
         "drafts": [r.model_dump() for r in research.recommendations] if research.completion != "complete" else [],
         "suggestions": suggestions, "symbols": [s.key.split(":", 1)[1] for s in prepared.securities],
         "scope": [s.key for s in prepared.securities],
-        "analysis_date": prepared.as_of.astimezone(ZoneInfo(context.config.settings.app_timezone)).date().isoformat(),
+        "analysis_date": report_date, "market_dates": market_dates,
         "usage": research.usage, "should_alert": research.completion not in {"complete", "skipped"} or any(s["should_alert"] for s in suggestions.values())}
+    if missed := getattr(context, "_missed_premarket", {}):
+        raw["missed_premarket"] = missed
     return AnalysisResult(agent_name=agent.name, title=title, content=report["content"], raw_data=raw)

@@ -161,7 +161,10 @@ def test_active_stock_captures_market_context_but_quiet_run_does_not(host, monke
     engine, _ = host
     monkeypatch.setenv('DATA_DIR', str(tmp_path))
     fast_config(engine)
-    indices = AsyncMock(return_value=[{'name': 'Controlled index', 'symbol': '000001', 'market': 'CN', 'current_price': 3000, 'change_pct': 1}])
+    from test_investment_research_integration import FIXTURE_AS_OF
+    indices = AsyncMock(return_value=[{'name': 'Controlled index', 'symbol': '000001', 'market': 'CN',
+                                       'current_price': 3000, 'change_pct': 1, 'source': 'session-fixture',
+                                       'source_timestamp': FIXTURE_AS_OF}])
     monkeypatch.setattr(DailyReportAgent, '_fetch_index_for_market', indices)
     monkeypatch.setattr(IntradayMonitorAgent, 'collect', lambda self, context: changed(context))
     result = asyncio.run(IntradayMonitorAgent().run(make_context('market-active')))

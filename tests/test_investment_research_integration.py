@@ -14,7 +14,7 @@ from src.modules.automation.base import AgentContext, PortfolioInfo
 from src.modules.automation.daily_report import DailyReportAgent
 from src.modules.automation.premarket_outlook import PremarketOutlookAgent
 from src.modules.automation.intraday_monitor import IntradayMonitorAgent
-from src.modules.research.orchestration import entry, repository, service
+from src.modules.research.orchestration import entry, evidence, repository, service
 from src.modules.research.orchestration.models import ResearchRun, ResearchArtifact, ResearchDelivery, ResearchOutbox
 from src.platform.persistence.database import Base
 from src.platform.persistence.models import AgentConfig, StockSuggestion, AgentPredictionOutcome, AnalysisHistory
@@ -26,6 +26,13 @@ spec = importlib.util.spec_from_file_location("investment_test_models", Path(__f
 scripts = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scripts)
 
+FIXTURE_AS_OF = datetime.fromisoformat("2026-11-25T15:00:00+08:00")
+FIXTURE_QUOTES = {
+    MarketCode.CN: FIXTURE_AS_OF,
+    MarketCode.HK: datetime.fromisoformat("2026-11-24T16:00:00+08:00"),
+    MarketCode.US: datetime.fromisoformat("2026-11-24T16:00:00-05:00"),
+}
+
 
 @pytest.fixture
 def host(tmp_path, monkeypatch):
@@ -33,6 +40,15 @@ def host(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     monkeypatch.setattr(repository, "engine", engine)
     monkeypatch.setattr(entry, "engine", engine)
+    # These scripted snapshots represent the mainland close, independently of
+    # the machine clock used for leases, deadlines, or unrelated test quotes.
+    check_quote = evidence.session_quote_validity
+    def check_fixture_quote(agent_name, market, quote, observed):
+        source = quote.get("source") if isinstance(quote, dict) else getattr(quote, "source", None)
+        if source == "session-fixture":
+            observed = FIXTURE_AS_OF
+        return check_quote(agent_name, market, quote, observed)
+    monkeypatch.setattr(evidence, "session_quote_validity", check_fixture_quote)
     monkeypatch.setattr(DailyReportAgent, "_fetch_index_for_market", AsyncMock(return_value=[]))
     model = scripts.Model()
     monkeypatch.setattr(service, "ResearchModelGateway", lambda client: model)
@@ -59,7 +75,9 @@ def configure(engine, name, mode="langgraph", **policy):
 async def collected(context):
     packs = {}
     for stock in context.watchlist:
-        quote = StockData(stock.symbol, stock.name, stock.market, 100, 0, 0, 100, 10000, 100, 101, 99, 100)
+        when = FIXTURE_QUOTES[stock.market]
+        quote = StockData(stock.symbol, stock.name, stock.market, 100, 0, 0, 100, 10000, 100, 101, 99, 100,
+                          quote_date=when.date(), source_timestamp=when, source="session-fixture")
         packs[stock.symbol] = SimpleNamespace(quote=quote, technical={"volume_ratio": 1}, missing=[],
             news=SimpleNamespace(items=[]), events=SimpleNamespace(items=[]), capital_flow={"net": 10}, sources={"quote": "fixture"})
     first = next(iter(packs.values()))
@@ -545,11 +563,12 @@ def test_prior_plan_is_same_market_day_before_cutoff_and_excludes_account_prose(
     from datetime import timedelta
     from src.modules.research.orchestration.evidence import prior_plan
     engine, _ = host
-    now = datetime.now(timezone.utc)
+    now = datetime(2026, 11, 25, 7, 30, tzinfo=timezone.utc)
+    premarket = datetime(2026, 11, 25, 1, 10, tzinfo=timezone.utc)
     day = now.astimezone(__import__('zoneinfo').ZoneInfo('Asia/Shanghai')).date().isoformat()
     with Session(engine) as db, db.begin():
         db.add(AnalysisHistory(agent_name='premarket_outlook', stock_symbol='*', analysis_date=day,
-            content='PRIVATE_CASH_PROSE', created_at=now - timedelta(hours=1), updated_at=now - timedelta(hours=1), raw_data={
+            content='PRIVATE_CASH_PROSE', created_at=premarket, updated_at=premarket, raw_data={
                 'suggestions': {'CN:600519': {'outlook': 'bullish', 'action': 'buy', 'reason': 'PRIVATE_CASH_PROSE',
                     'execution_constraints': ['insufficient_funds'], 'triggers': ['Break resistance'], 'invalidations': ['Break support']}}}))
     result = asyncio.run(prior_plan('CN:600519', now, 'Asia/Shanghai'))

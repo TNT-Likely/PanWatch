@@ -125,11 +125,15 @@ def save_suggestion(
                     and _norm_text(latest.action_label) == _norm_text(action_label)
                     and _norm_text(latest.signal or "") == _norm_text(signal)
                     and (latest.meta or {}).get("suggestion_state") == meta["suggestion_state"]
+                    and (latest.meta or {}).get("analysis_date") == meta.get("analysis_date")
                 )
 
                 if same_key and (now - latest_created) <= window:
                     # Extend expiry (keep the first message to avoid churn).
-                    if not latest.expires_at or latest.expires_at < expires_at:
+                    latest_expiry = latest.expires_at
+                    if latest_expiry is not None and latest_expiry.tzinfo is None:
+                        latest_expiry = latest_expiry.replace(tzinfo=timezone.utc)
+                    if latest_expiry is None or latest_expiry < expires_at:
                         latest.expires_at = expires_at
                     if not (latest.stock_name or "") and stock_name:
                         latest.stock_name = stock_name

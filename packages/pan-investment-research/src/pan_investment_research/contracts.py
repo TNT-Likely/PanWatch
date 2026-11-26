@@ -166,6 +166,7 @@ class ResearchPolicy(Contract):
     debate: bool = True
     debate_on: Literal["always", "material"] = "always"
     max_feedback: int = Field(default=1, ge=0, le=2)
+    feedback_scope: Literal["research_and_plan", "plan_only"] = "research_and_plan"
     max_attempts: int = Field(default=18, ge=1, le=100)
     max_tools: int = Field(default=6, ge=0, le=30)
     max_tool_rounds: int = Field(default=1, ge=0, le=2)

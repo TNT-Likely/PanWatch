@@ -176,6 +176,7 @@ def preview_schedule(
     markets: Iterable | None = None,
     trading_hours_only: bool = False,
     end: datetime | None = None,
+    phase: str | None = None,
 ) -> list[datetime]:
     """Return next N run times for a schedule.
 
@@ -192,6 +193,7 @@ def preview_schedule(
     from src.platform.scheduling.trading_calendar import eligible_markets, next_eligible_time
 
     target_markets = list(markets) if markets is not None else None
+    phase = phase or ("trading" if trading_hours_only else None)
     if target_markets == []:
         return []
     out: list[datetime] = []
@@ -202,9 +204,9 @@ def preview_schedule(
         nxt = trigger.get_next_fire_time(prev, current)
         if not nxt or nxt > limit:
             break
-        if target_markets is not None and not eligible_markets(target_markets, nxt, trading_hours_only=trading_hours_only):
+        if target_markets is not None and not eligible_markets(target_markets, nxt, phase=phase):
             boundaries = [boundary for market in target_markets
-                          if (boundary := next_eligible_time(market, nxt, trading_hours_only=trading_hours_only)) is not None]
+                          if (boundary := next_eligible_time(market, nxt, phase=phase)) is not None]
             if not boundaries:
                 break
             current = min(boundaries).astimezone(tz)
@@ -227,6 +229,7 @@ def count_runs_within(
     max_iters: int = 20000,
     markets: Iterable | None = None,
     trading_hours_only: bool = False,
+    phase: str | None = None,
 ) -> int:
     """Count fire times within (start, end]."""
     if not schedule or end <= start:
@@ -234,4 +237,4 @@ def count_runs_within(
 
     return len(preview_schedule(schedule, count=max_iters, timezone=timezone,
                                 start=start + timedelta(microseconds=1), end=end,
-                                markets=markets, trading_hours_only=trading_hours_only))
+                                markets=markets, trading_hours_only=trading_hours_only, phase=phase))
