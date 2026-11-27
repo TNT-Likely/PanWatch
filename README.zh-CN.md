@@ -48,6 +48,10 @@
     <td><a href="https://88api.ai/sign-up?aff=W38W"><img src="./docs/sponsors/88api-logo.png" alt="88API" width="120"></a></td>
     <td><a href="https://88api.ai/sign-up?aff=W38W"><b>88API Token 聚合平台</b></a><br><br>🧠 聚合 GPT、Claude、Gemini、Grok、DeepSeek、Kimi、GLM 等语言与编程模型；<br>🎨 图片模型：GPT-Image、Gemini、Grok 等；<br>🎬 视频模型：Seedance、Veo、MiniMax H3、Kling、Grok 等；<br>🎙️ 语音能力：Whisper、TTS 等。从文案、出图、改图，到视频生成与配音<br>🎁新用户注册送体验额度，可以检测模型能力。站内有人工客服值守！<br>👉香港正规企业运营 稳定供应 全绿满血 不降智 提供发票<br><br><a href="https://88api.ai/sign-up?aff=W38W"><b>立即注册 →</b></a></td>
   </tr>
+  <tr>
+    <td><a href="https://laojuelv.com/kh/?utm_source=panwatch"><img src="./docs/sponsors/laojuelv-logo.png" alt="老倔驴" width="120"></a></td>
+    <td><a href="https://laojuelv.com/kh/?utm_source=panwatch"><b>老倔驴 · 免五低佣开户</b></a><br><br>聚合十多家券商优惠费率，已帮助千人开户：<br>✅ 股票最低万 0.6<br>✅ ETF 玩家喜爱的YH：ETF 万 0.5 免五<br>✅ 两融利率最低破 2%，还有ETF专项 2.78%50 W即可。<br>✅ QMT 最低 5 万门槛，还有miniqmt能开<br>✅ 最终都是持牌券商经理对接开户<br>先比费率再开户，不花冤枉钱，费率常年随时更新欢迎收藏。<br><br><a href="https://laojuelv.com/kh/?utm_source=panwatch"><b>查看优惠费率 →</b></a></td>
+  </tr>
 </table>
 
 </details>

@@ -48,6 +48,10 @@ Thanks to **Modelflare** for sponsoring this project! Full-capability, stable mo
     <td><a href="https://88api.ai/sign-up?aff=W38W"><img src="./docs/sponsors/88api-logo.png" alt="88API" width="120"></a></td>
     <td><a href="https://88api.ai/sign-up?aff=W38W"><b>88API Token Aggregation Platform</b></a><br><br>🧠 Access language and coding models including GPT, Claude, Gemini, Grok, DeepSeek, Kimi, and GLM;<br>🎨 Image models: GPT-Image, Gemini, Grok, and more;<br>🎬 Video models: Seedance, Veo, MiniMax H3, Kling, Grok, and more;<br>🎙️ Speech capabilities: Whisper, TTS, and more. From copywriting and image generation and editing to video generation and voiceovers.<br>🎁 New users receive trial credits upon registration to test model capabilities. Live customer support is available on the site!<br>👉 Operated by a registered Hong Kong company · Stable availability · Fully operational, full-capability service · No reduced model intelligence · Invoices available<br><br><a href="https://88api.ai/sign-up?aff=W38W"><b>Register now →</b></a></td>
   </tr>
+  <tr>
+    <td><a href="https://laojuelv.com/kh/?utm_source=panwatch"><img src="./docs/sponsors/laojuelv-logo.png" alt="老倔驴" width="120"></a></td>
+    <td><a href="https://laojuelv.com/kh/?utm_source=panwatch"><b>老倔驴 · 免五低佣开户</b></a><br><br>聚合十多家券商优惠费率，已帮助千人开户：<br>✅ 股票最低万 0.6<br>✅ ETF 玩家喜爱的YH：ETF 万 0.5 免五<br>✅ 两融利率最低破 2%，还有ETF专项 2.78%50 W即可。<br>✅ QMT 最低 5 万门槛，还有miniqmt能开<br>✅ 最终都是持牌券商经理对接开户<br>先比费率再开户，不花冤枉钱，费率常年随时更新欢迎收藏。<br><br><a href="https://laojuelv.com/kh/?utm_source=panwatch"><b>查看优惠费率 →</b></a></td>
+  </tr>
 </table>
 
 </details>
