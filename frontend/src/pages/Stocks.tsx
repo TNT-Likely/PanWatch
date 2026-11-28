@@ -33,6 +33,7 @@ import { applyMarketStatuses, mergePortfolioQuotes, toQuoteMap, type Position, t
 import { MarketCalendarStatus, type MarketStatus } from '@/components/MarketCalendarStatus'
 import { marketSignTextClass } from '@/lib/market-colors'
 import { parseAssistantPortfolioTarget } from '@/lib/assistant-navigation'
+import { formatQuantity, parseQuantity } from '@/lib/position-quantity'
 import { useGuidedTour } from '@/components/onboarding/GuidedTour'
 import FirstAnalysis from '@/components/onboarding/FirstAnalysis'
 
@@ -900,7 +901,7 @@ export default function StocksPage() {
         account_id: accountId,
         stock_id: position.stock_id,
         cost_price: position.cost_price.toString(),
-        quantity: position.quantity.toString(),
+        quantity: formatQuantity(position.quantity),
         invested_amount: position.invested_amount?.toString() || '',
         trading_style: position.trading_style || '',
         stock_symbol: position.symbol,
@@ -1005,11 +1006,17 @@ export default function StocksPage() {
         }
       }
 
+      const quantity = parseQuantity(positionForm.quantity)
+      if (quantity === null) {
+        toast(stockT('stocksPage.messages.quantityInvalid'), 'error')
+        return
+      }
+
       const payload = {
         account_id: positionForm.account_id,
         stock_id: stockId,
         cost_price: parseFloat(positionForm.cost_price),
-        quantity: parseInt(positionForm.quantity),
+        quantity,
         invested_amount: positionForm.invested_amount ? parseFloat(positionForm.invested_amount) : null,
         trading_style: positionForm.trading_style,  // 空字符串表示清空
       }
@@ -1795,7 +1802,7 @@ export default function StocksPage() {
                                     {pos.change_pct != null ? `${pos.change_pct >= 0 ? '+' : ''}${pos.change_pct.toFixed(2)}%` : '—'}
                                   </td>
                                   <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{formatPrice(pos.cost_price)}</td>
-                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{pos.quantity}</td>
+                                  <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">{formatQuantity(pos.quantity)}</td>
                                   <td className="px-4 py-2.5 text-right font-mono text-[12px] text-muted-foreground">
                                     {pos.market_value != null ? (
                                       <div className="flex flex-col items-end">
@@ -1977,7 +1984,7 @@ export default function StocksPage() {
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">{stockT('stocksPage.messages.quantity')}</div>
-                                  <div className="font-mono text-foreground truncate" title={String(pos.quantity)}>{pos.quantity}</div>
+                                  <div className="font-mono text-foreground truncate" title={String(pos.quantity)}>{formatQuantity(pos.quantity)}</div>
                                 </div>
                                 <div className="min-w-0">
                                   <div className="text-[10px] text-muted-foreground">{stockT('stocksPage.messages.pnl')}</div>

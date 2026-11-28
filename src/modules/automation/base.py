@@ -25,7 +25,7 @@ class PositionInfo:
     name: str
     market: MarketCode
     cost_price: float
-    quantity: int
+    quantity: float
     invested_amount: float | None = None
     trading_style: str = "swing"  # short: 短线, swing: 波段, long: 长线
 
