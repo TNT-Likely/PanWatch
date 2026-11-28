@@ -21,9 +21,16 @@ on:
         required: false
         type: string
         default: 'linux/amd64,linux/arm64'
+      image_name:
+        description: 'Image repository to publish (e.g. sunxiao0721/panwatch)'
+        required: false
+        type: string
+        default: 'sunxiao0721/panwatch'
 
 env:
-  IMAGE_NAME: sunxiao0721/panwatch
+  # Tag pushes keep publishing to the upstream image; forks can publish their
+  # own build by passing image_name on a manual run.
+  IMAGE_NAME: ${{ inputs.image_name || 'sunxiao0721/panwatch' }}
 
 jobs:
   docker:
