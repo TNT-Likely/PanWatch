@@ -89,7 +89,7 @@ describe('portfolio mutations while K-line summaries are slow', () => {
     expect(vi.mocked(fetchAPI).mock.calls.filter(([path]) => path === '/quotes/batch')).toHaveLength(quotesBefore)
   })
 
-  it('saves a fractional holding quantity instead of truncating it', async () => {
+  it.each(['0.5', '0.22'])('saves a fractional holding quantity (%s) instead of truncating it', async (typed) => {
     let quantity: number | undefined
     vi.mocked(klinesApi.summaryBatch).mockImplementation(() => new Promise(() => {}))
     vi.mocked(fetchAPI).mockImplementation(async (path, options) => {
@@ -120,9 +120,9 @@ describe('portfolio mutations while K-line summaries are slow', () => {
     const dialog = screen.getByRole('dialog')
     const input = within(dialog).getByPlaceholderText('0')
     await user.clear(input)
-    await user.type(input, '0.5')
+    await user.type(input, typed)
     await user.click(within(dialog).getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(quantity).toBe(0.5))
+    await waitFor(() => expect(quantity).toBe(Number(typed)))
   })
 })
 

@@ -9,6 +9,8 @@ from __future__ import annotations
 import math
 from decimal import Decimal, InvalidOperation
 
+from pydantic_core import PydanticCustomError
+
 MAX_QUANTITY_DECIMALS = 8
 """持仓数量最多支持的小数位数。"""
 
@@ -27,9 +29,9 @@ def _finite_quantity(value: float) -> float:
     try:
         quantity = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError("持仓数量必须是数字") from exc
+        raise PydanticCustomError("quantity_not_a_number", "持仓数量必须是数字") from exc
     if not math.isfinite(quantity):
-        raise ValueError("持仓数量必须是有限数字")
+        raise PydanticCustomError("quantity_not_finite", "持仓数量必须是有限数字")
     return quantity
 
 
@@ -41,18 +43,22 @@ def validate_quantity_precision(value: float) -> float:
     """
     quantity = _finite_quantity(value)
     if quantity_decimals(quantity) > MAX_QUANTITY_DECIMALS:
-        raise ValueError(f"持仓数量最多支持 {MAX_QUANTITY_DECIMALS} 位小数")
+        raise PydanticCustomError(
+            "quantity_too_precise",
+            f"持仓数量最多支持 {MAX_QUANTITY_DECIMALS} 位小数",
+        )
     return quantity
 
 
 def validate_position_quantity(value: float) -> float:
     """校验持仓数量：必须是有限正数，且小数位数不超过 8 位。
 
-    失败时抛 ValueError，调用方（Pydantic 校验器）会转成 422。
+    失败时抛 PydanticCustomError，调用方（Pydantic 校验器）会转成 422，
+    错误信息直接是可读文案，不会带 “Value error, ” 前缀。
     """
     quantity = _finite_quantity(value)
     if quantity <= 0:
-        raise ValueError("持仓数量必须大于 0")
+        raise PydanticCustomError("quantity_not_positive", "持仓数量必须大于 0")
     return validate_quantity_precision(quantity)
 
 

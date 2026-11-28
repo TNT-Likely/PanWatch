@@ -116,6 +116,27 @@ def test_position_accepts_quantity_below_one(api):
     assert db.query(Position).one().quantity == 0.5
 
 
+@pytest.mark.parametrize("quantity", [0.22, 0.5, 0.0001, 0.00000001])
+def test_fractional_quantities_survive_the_round_trip(api, quantity):
+    """常见碎股（0.22 等）在写入、读取和更新后都必须原样保留。"""
+    client, db = api
+    stock_id, account_id = _seed(client)
+
+    created = client.post(
+        "/positions",
+        json={
+            "stock_id": stock_id,
+            "account_id": account_id,
+            "cost_price": 4.123,
+            "quantity": quantity,
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["quantity"] == quantity
+    assert client.get("/positions").json()[0]["quantity"] == quantity
+    assert db.query(Position).one().quantity == quantity
+
+
 def test_position_keeps_eight_decimal_places(api):
     """8 位小数的数量在写入、读取和更新后都保持一致。"""
     client, db = api
@@ -150,6 +171,21 @@ def test_position_rejects_invalid_quantity(api):
     for invalid in (0, -1, 0.000000001):
         response = client.post("/positions", json={**payload, "quantity": invalid})
         assert response.status_code == 422, invalid
+
+
+def test_rejected_quantity_reports_a_readable_message(api):
+    """被拒绝的数量必须给出可直接阅读的原因，而不是内部异常类型。"""
+    client, _ = api
+    stock_id, account_id = _seed(client)
+    payload = {"stock_id": stock_id, "account_id": account_id, "cost_price": 1.0}
+
+    zero = client.post("/positions", json={**payload, "quantity": 0})
+    assert zero.status_code == 422
+    assert zero.json()["detail"][0]["msg"] == "持仓数量必须大于 0"
+
+    precise = client.post("/positions", json={**payload, "quantity": 0.000000001})
+    assert precise.status_code == 422
+    assert precise.json()["detail"][0]["msg"] == "持仓数量最多支持 8 位小数"
 
 
 def test_portfolio_summary_uses_fractional_quantity(api):
@@ -299,6 +335,31 @@ def test_migration_rebuilds_quantity_column_and_keeps_rows(tmp_path):
         columns = {row[1]: row[2] for row in conn.execute(text("PRAGMA table_info(positions)"))}
         assert columns["quantity"] == "FLOAT"
     engine.dispose()
+
+
+def test_upgraded_legacy_database_accepts_a_fractional_quantity(tmp_path):
+    """旧库升级后，用户可以把已有持仓改成碎股（真实升级路径）。"""
+    db_path = tmp_path / "legacy.db"
+    connection = sqlite3.connect(db_path)
+    connection.executescript(_LEGACY_SCHEMA)
+    connection.commit()
+    connection.close()
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.begin() as conn:
+        _m151_fractional_position_quantity(conn)
+
+    session = sessionmaker(bind=engine)()
+    try:
+        position = session.query(Position).filter_by(id=1).one()
+        assert position.quantity == 100.0
+        position.quantity = 0.22
+        session.commit()
+
+        assert session.query(Position).filter_by(id=1).one().quantity == 0.22
+    finally:
+        session.close()
+        engine.dispose()
 
 
 def test_migration_is_noop_on_a_fresh_database(tmp_path):
