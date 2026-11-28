@@ -92,6 +92,8 @@ The gateway receives the registration token and opaque identifiers. Notification
 
 The total uses the same CNY calculation as the Web view. Holdings use the market currency and include market, symbol, name, quantity and available market value. Entries from separate enabled accounts can share a market and symbol. The mobile response does not expose account names or cost prices.
 
+Quantity is a decimal number: a holding may hold less than one unit and may carry up to 8 decimal places. Clients should render it as a decimal value instead of an integer count.
+
 When valuation is `partial`, the total includes available values and recorded cash. When valuation is `unavailable`, the total is recorded cash and the holdings have no available price. A confirmed zero market value is numeric zero and a missing value is `null`.
 
 ```json
