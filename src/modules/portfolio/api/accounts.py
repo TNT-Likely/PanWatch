@@ -5,14 +5,15 @@ import time
 import httpx
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
 from datetime import datetime, timedelta, timezone
 
 from src.platform.persistence.database import get_db
 from src.platform.persistence.models import Account, PriceAlertRule, Position, Stock
+from src.modules.portfolio.quantity import validate_position_quantity
 from src.platform.marketdata.marketdata_client import md_quote_rows
 from src.platform.marketdata.collectors.market_http import TTLCache
 from src.platform.marketdata.models import MarketCode
@@ -123,16 +124,28 @@ class PositionCreate(BaseModel):
     account_id: int
     stock_id: int
     cost_price: float
-    quantity: int
+    quantity: float
     invested_amount: float | None = None
     trading_style: str | None = None  # short: 短线, swing: 波段, long: 长线
+
+    @field_validator("quantity")
+    @classmethod
+    def _check_quantity(cls, value: float) -> float:
+        return validate_position_quantity(value)
 
 
 class PositionUpdate(BaseModel):
     cost_price: float | None = None
-    quantity: int | None = None
+    quantity: float | None = None
     invested_amount: float | None = None
     trading_style: str | None = None
+
+    @field_validator("quantity")
+    @classmethod
+    def _check_quantity(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        return validate_position_quantity(value)
 
 
 class PositionResponse(BaseModel):
@@ -140,7 +153,7 @@ class PositionResponse(BaseModel):
     account_id: int
     stock_id: int
     cost_price: float
-    quantity: int
+    quantity: float
     invested_amount: float | None
     sort_order: int
     trading_style: str | None

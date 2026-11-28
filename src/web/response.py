@@ -124,6 +124,15 @@ class ResponseWrapperMiddleware:
                     or detail.get("detail")
                     or json.dumps(detail, ensure_ascii=False)
                 )
+            elif isinstance(detail, list) and detail and isinstance(detail[0], dict):
+                # FastAPI/Pydantic 校验错误是列表：取第一条的可读信息，
+                # 不要把整段 JSON 塞进 message（前端 toast 会直接显示它）。
+                raw_msg = detail[0].get("msg")
+                message = (
+                    str(raw_msg)
+                    if raw_msg
+                    else json.dumps(detail, ensure_ascii=False)
+                )
             else:
                 message = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
             if code == 0:

@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.platform.persistence.models  # noqa: F401  注册 ORM 模型
 from src.platform.persistence.database import Base
 from src.platform.persistence.models import AgentPredictionOutcome
+
+# 复盘 API 默认只回看最近 90 天，写死日期会让用例随时间失效，
+# 因此这里用相对今天的日期，保证用例长期有效。
+_RECENT_PREDICTION_DATE = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
 
 
 def _mem_db():
@@ -21,7 +27,7 @@ def _row(horizon: int) -> AgentPredictionOutcome:
         agent_name="daily_report",
         stock_symbol="600000",
         stock_market="CN",
-        prediction_date="2026-08-28",
+        prediction_date=_RECENT_PREDICTION_DATE,
         prediction_group_id="group-api-1",
         horizon_days=horizon,
         horizon_unit="trading_days",
@@ -83,7 +89,7 @@ def test_summary_only_counts_trading_day_records():
                 agent_name="daily_report",
                 stock_symbol="000001",
                 stock_market="CN",
-                prediction_date="2026-08-28",
+                prediction_date=_RECENT_PREDICTION_DATE,
                 horizon_days=5,
                 horizon_unit="calendar_days_legacy",
                 action="buy",
