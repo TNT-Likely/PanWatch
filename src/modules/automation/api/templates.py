@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.platform.persistence.database import get_db
 from src.platform.marketdata.instruments import AssetType, infer_asset_type
 from src.web.errors import api_error
+from src.modules.portfolio.quantity import normalize_quantity, validate_quantity_precision
 from src.platform.persistence.models import (
     AIModel,
     AIService,
@@ -104,10 +105,15 @@ class TemplatePosition(BaseModel):
     market: str
     asset_type: AssetType | None = None
     cost_price: float
-    quantity: int
+    quantity: float
     invested_amount: float | None = None
     sort_order: int = 0
     trading_style: str = "swing"
+
+    @field_validator("quantity")
+    @classmethod
+    def _check_quantity(cls, value: float) -> float:
+        return validate_quantity_precision(value)
 
 
 class TemplateAccount(BaseModel):
@@ -349,7 +355,7 @@ def export_template(
                         "market": position.stock.market,
                         "asset_type": position.stock.asset_type,
                         "cost_price": float(position.cost_price),
-                        "quantity": int(position.quantity),
+                        "quantity": normalize_quantity(position.quantity),
                         "invested_amount": position.invested_amount,
                         "sort_order": int(position.sort_order or 0),
                         "trading_style": position.trading_style or "swing",
@@ -827,7 +833,7 @@ def import_template(
             else:
                 updated_positions += 1
             position.cost_price = float(position_data.cost_price)
-            position.quantity = int(position_data.quantity)
+            position.quantity = float(position_data.quantity)
             position.invested_amount = position_data.invested_amount
             position.sort_order = int(position_data.sort_order or 0)
             position.trading_style = position_data.trading_style or "swing"

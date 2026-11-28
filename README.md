@@ -83,7 +83,7 @@ The screenshots below use the English interface; Simplified Chinese is available
 
 | Capability | What you can do |
 |---|---|
-| **Portfolio** | Manage multiple brokerage accounts, track holdings and P&L, and set trading styles. |
+| **Portfolio** | Manage multiple brokerage accounts, track holdings and P&L, set trading styles, and record fractional quantities with up to 8 decimal places. |
 | **AI research** | Follow technical, sentiment, news, and fundamentals analysis through debate, risk review, and a portfolio-manager decision. |
 | **Scheduled agents** | Run pre-market, intraday, and closing workflows on eligible exchange trading days using your configured schedules. |
 | **Price alerts** | Combine conditions with AND/OR logic and configure cooldowns, daily limits, expiration, and notification channels. |

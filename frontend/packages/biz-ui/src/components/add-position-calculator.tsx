@@ -5,6 +5,7 @@ import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Input } from '@panwatch/base-ui/components/ui/input'
 import { useToast } from '@panwatch/base-ui/components/ui/toast'
 import { useTranslation } from 'react-i18next'
+import { formatQuantity } from '@/lib/position-quantity'
 
 export interface AddPositionCalc {
   newQty: number
@@ -53,6 +54,11 @@ function fmt(n: number | null | undefined, d = 2): string {
 function fmtInt(n: number | null | undefined): string {
   if (n == null || !isFinite(n)) return '--'
   return Math.round(n).toLocaleString()
+}
+/** 数量可能是碎股，用数量格式化避免四舍五入丢掉小数。 */
+function fmtQty(n: number | null | undefined): string {
+  if (n == null || !isFinite(n)) return '--'
+  return formatQuantity(n)
 }
 
 const VERDICT_STYLE: Record<string, string> = {
@@ -130,7 +136,7 @@ export default function AddPositionCalculator({
         market,
         current_quantity: currentQuantity,
         current_cost: currentCost,
-        add_quantity: Math.round(addQty),
+        add_quantity: addQty,
         add_price: addPrice,
       })
       setAiResult(res)
@@ -200,7 +206,7 @@ export default function AddPositionCalculator({
 
           {mode === 'amount' && addQty > 0 && (
             <div className="text-[10px] text-muted-foreground">
-              {tr('estimatedShares', { shares: fmtInt(addQty), lots: isCN ? tr('estimatedLots', { lots: fmtInt(addQty / 100) }) : '' })}
+              {tr('estimatedShares', { shares: fmtQty(addQty), lots: isCN ? tr('estimatedLots', { lots: fmtInt(addQty / 100) }) : '' })}
             </div>
           )}
 
@@ -222,7 +228,7 @@ export default function AddPositionCalculator({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{tr('total')}</span>
                 <span className="font-mono">
-                  {fmtInt(calc.newQty)} / {fmtInt(calc.totalInvested)}
+                  {fmtQty(calc.newQty)} / {fmtInt(calc.totalInvested)}
                 </span>
               </div>
               {lotWarn && (
@@ -249,7 +255,7 @@ export default function AddPositionCalculator({
                   <span className="text-muted-foreground">{tr('targetHint')}</span>
                 ) : reverseShares != null ? (
                   <span>
-                    {tr('required', { shares: fmtInt(reverseShares), lots: isCN ? tr('estimatedLots', { lots: fmtInt(Math.ceil(reverseShares / 100)) }) : '' })}
+                    {tr('required', { shares: fmtQty(reverseShares), lots: isCN ? tr('estimatedLots', { lots: fmtInt(Math.ceil(reverseShares / 100)) }) : '' })}
                     <br />{tr('approximately', { amount: fmtInt(reverseShares * addPrice) })}
                   </span>
                 ) : (

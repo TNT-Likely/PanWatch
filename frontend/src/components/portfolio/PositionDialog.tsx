@@ -7,6 +7,7 @@ import { Input } from '@panwatch/base-ui/components/ui/input'
 import { Label } from '@panwatch/base-ui/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@panwatch/base-ui/components/ui/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@panwatch/base-ui/components/ui/select'
+import { parseQuantity } from '@/lib/position-quantity'
 import type { Account, PositionForm, SearchResult } from './types'
 
 interface Props {
@@ -176,8 +177,11 @@ export function PositionDialog({ positionDialogOpen, setPositionDialogOpen, edit
                 onChange={e => setPositionForm({ ...positionForm, quantity: e.target.value })}
                 placeholder="0"
                 className="font-mono"
-                inputMode="numeric"
+                inputMode="decimal"
               />
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {stockT('stocksPage.messages.quantityHint')}
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -213,7 +217,7 @@ export function PositionDialog({ positionDialogOpen, setPositionDialogOpen, edit
             <Button variant="ghost" onClick={() => setPositionDialogOpen(false)}>{stockT('stocksPage.messages.cancel')}</Button>
             <Button
               onClick={handlePositionSubmit}
-              disabled={!positionForm.cost_price || !positionForm.quantity || (!editPositionId && !positionForm.stock_id && !positionForm.stock_symbol)}
+              disabled={!positionForm.cost_price || parseQuantity(positionForm.quantity) === null || (!editPositionId && !positionForm.stock_id && !positionForm.stock_symbol)}
             >
               {editPositionId ? stockT('stocksPage.messages.save') : stockT('stocksPage.messages.add')}
             </Button>

@@ -11,6 +11,7 @@ import {
 } from '@panwatch/api'
 import { getMarketBadge } from '@panwatch/biz-ui'
 import { useLocalStorage } from '@/lib/utils'
+import { formatQuantity } from '@/lib/position-quantity'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@panwatch/base-ui/components/ui/dialog'
 import { Button } from '@panwatch/base-ui/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@panwatch/base-ui/components/ui/select'
@@ -842,8 +843,8 @@ export default function StockInsightModal(props: {
     }
     if (holdingAgg) {
       parts.push(english
-        ? `Position: ${holdingAgg.quantity} shares; cost ${holdingAgg.unitCost}; market value ${holdingAgg.marketValue}; P&L ${holdingAgg.pnl}`
-        : `持仓：${holdingAgg.quantity}股，成本${holdingAgg.unitCost}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`)
+        ? `Position: ${formatQuantity(holdingAgg.quantity)} shares; cost ${holdingAgg.unitCost}; market value ${holdingAgg.marketValue}; P&L ${holdingAgg.pnl}`
+        : `持仓：${formatQuantity(holdingAgg.quantity)}股，成本${holdingAgg.unitCost}，市值${holdingAgg.marketValue}，盈亏${holdingAgg.pnl}`)
     }
     return parts.join('\n')
   }, [quote, klineSummary, technicalScored, suggestions, holdingAgg, english])
@@ -1433,7 +1434,7 @@ export default function StockInsightModal(props: {
                         <div className="grid grid-cols-2 gap-2 text-[12px]">
                           <div className="rounded bg-accent/20 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">{tr('holding.quantity')}</div>
-                            <div className="font-mono">{holdingAgg.quantity}</div>
+                            <div className="font-mono">{formatQuantity(holdingAgg.quantity)}</div>
                           </div>
                           <div className="rounded bg-accent/20 px-2 py-1.5">
                             <div className="text-[10px] text-muted-foreground">{tr('holding.cost')}</div>

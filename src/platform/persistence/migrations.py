@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
@@ -2391,6 +2392,90 @@ def _m150_mobile_assistant_approvals(conn: Connection) -> None:
     MobileAssistantApproval.__table__.create(conn, checkfirst=True)
 
 
+_REAL_AFFINITY_COLUMN_TYPES = frozenset(
+    {"FLOAT", "REAL", "DOUBLE", "DOUBLE PRECISION"}
+)
+
+
+def _m151_fractional_position_quantity(conn: Connection) -> None:
+    """把 positions.quantity 从 INTEGER 放宽为 FLOAT，支持小于 1 的持仓与 8 位小数。
+
+    SQLite 不能直接改列类型，按官方推荐流程重建表：按原 DDL 建同结构新表
+    （只把 quantity 换成 FLOAT）-> 复制数据 -> 校验行数 -> 删旧表 -> 改名 -> 复原索引。
+    整个过程在迁移事务内执行，任何一步失败都会回滚，不会留下半张表。
+    """
+    if not _has_table(conn, "positions"):
+        return
+
+    rows = conn.execute(text("PRAGMA table_info(positions)")).fetchall()
+    declared = ""
+    columns: list[str] = []
+    for row in rows:
+        name = str(row[1])
+        columns.append(name)
+        if name == "quantity":
+            declared = str(row[2] or "").strip().upper()
+    if declared in _REAL_AFFINITY_COLUMN_TYPES:
+        return  # 已经是浮点列，无需重建
+
+    table_row = conn.execute(
+        text("SELECT sql FROM sqlite_master WHERE type='table' AND name='positions'")
+    ).first()
+    if not table_row or not table_row[0]:
+        return
+    create_sql = str(table_row[0])
+
+    new_table = "positions__quantity_float"
+    new_sql = re.sub(
+        r"(?is)\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?['\"`\[]?positions['\"`\]]?",
+        f'CREATE TABLE "{new_table}"',
+        create_sql,
+        count=1,
+    )
+    new_sql, replaced = re.subn(
+        r"(?i)(['\"`\[]?quantity['\"`\]]?\s+)INTEGER\b",
+        r"\1FLOAT",
+        new_sql,
+        count=1,
+    )
+    if not replaced or new_sql == create_sql:
+        raise RuntimeError("positions 表结构无法识别，无法把 quantity 迁移为浮点列")
+
+    # 旧表上的显式索引在删表时会一并删除，先取出 DDL 以便重建。
+    index_rows = conn.execute(
+        text(
+            "SELECT name, sql FROM sqlite_master "
+            "WHERE type='index' AND tbl_name='positions' AND sql IS NOT NULL"
+        )
+    ).fetchall()
+
+    source_count = int(
+        conn.execute(text("SELECT COUNT(*) FROM positions")).scalar() or 0
+    )
+    conn.execute(text(new_sql))
+    column_list = ", ".join(f'"{name}"' for name in columns)
+    order_by = ' ORDER BY "id"' if "id" in columns else ""
+    conn.execute(
+        text(
+            f'INSERT INTO "{new_table}" ({column_list}) '
+            f'SELECT {column_list} FROM positions{order_by}'
+        )
+    )
+    copied_count = int(
+        conn.execute(text(f'SELECT COUNT(*) FROM "{new_table}"')).scalar() or 0
+    )
+    if copied_count != source_count:
+        raise RuntimeError(
+            f"positions 迁移后行数不一致（{copied_count} != {source_count}），已回滚"
+        )
+
+    conn.execute(text("DROP TABLE positions"))
+    conn.execute(text(f'ALTER TABLE "{new_table}" RENAME TO positions'))
+    for _name, index_sql in index_rows:
+        conn.execute(text(str(index_sql)))
+    logger.info("positions.quantity 已迁移为浮点列（保留 %s 行）", source_count)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(101, "agent_config_kind_and_visibility", _m101_agent_config_kind),
     Migration(102, "backfill_agent_kind_data", _m102_backfill_agent_kind),
@@ -2442,6 +2527,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(148, "mobile_push_test_minute", _m148_mobile_push_test_minute),
     Migration(149, "mobile_assistant_conversations", _m149_mobile_assistant_conversations),
     Migration(150, "mobile_assistant_reminder_approvals", _m150_mobile_assistant_approvals),
+    Migration(151, "fractional_position_quantity", _m151_fractional_position_quantity),
 )
 
 
